@@ -2,8 +2,10 @@ from src.engine import SignalEngine
 from src.models import Bar, RuleHit
 
 
-def make_engine(threshold=5.0, cooldown_s=60):
-    cfg = {"signals": {"threshold": threshold, "strong_threshold": 8.0},
+def make_engine(threshold_long=5.0, threshold_short=5.0, cooldown_s=60):
+    cfg = {"signals": {"threshold_long": threshold_long,
+                       "threshold_short": threshold_short,
+                       "strong_threshold": 8.0},
            "timeframes": {"cooldown_s": {"1m": cooldown_s}}}
     return SignalEngine(cfg)
 
@@ -60,3 +62,13 @@ def test_low_volume_skipped():
     hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
     bar = Bar("SHIBCOIN", "1m", 0, 60000, 1, 1.1, 0.9, 1.05, 10.0)
     assert eng.evaluate(bar, hits, None, None) == []
+
+
+def test_directional_thresholds():
+    eng = make_engine(threshold_long=6.0, threshold_short=4.0)
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 105, 99, 103, 90000.0)
+    short_hits = [RuleHit("ema_cross", "SHORT: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    sigs = eng.evaluate(bar, short_hits, None, None)
+    assert sigs and sigs[0].direction == "SHORT" and sigs[0].score == 5.0
+    long_hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    assert eng.evaluate(bar, long_hits, None, None) == []

@@ -12,7 +12,8 @@ def _direction_of(hit: RuleHit) -> str | None:
 class SignalEngine:
     def __init__(self, cfg: dict):
         sig = cfg["signals"]
-        self.threshold = sig["threshold"]
+        self.long_threshold = sig["threshold_long"]
+        self.short_threshold = sig["threshold_short"]
         self.strong_threshold = sig["strong_threshold"]
         self.min_quote_volume = sig.get("min_quote_volume_usd", 0.0)
         self.cooldowns: dict[str, int] = dict(cfg["timeframes"]["cooldown_s"])
@@ -29,7 +30,8 @@ class SignalEngine:
         direction = "LONG" if long_score >= short_score else "SHORT"
         keep = [h for h in hits if _direction_of(h) in (direction, None)]
         score = sum(h.score for h in keep)
-        if score < self.threshold:
+        threshold = self.long_threshold if direction == "LONG" else self.short_threshold
+        if score < threshold:
             return []
         key = (bar.symbol, bar.timeframe, direction)
         cd_ms = self.cooldowns.get(bar.timeframe, 60) * 1000

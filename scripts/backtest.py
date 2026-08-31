@@ -168,7 +168,7 @@ async def main():
                 t1 = datetime.fromtimestamp(df["ts"].iat[-1] / 1000, timezone.utc)
                 span = f"{tf}: {t0:%d.%m %H:%M} - {t1:%d.%m %H:%M} UTC"
 
-    runs = ((c["threshold"], c["threshold"]), (3.0, 3.0), (6.0, 4.0))
+    runs = ((c["threshold_long"], c["threshold_short"]), (3.0, 3.0))
     for thresholds in runs:
         sigs = [s for (sym, tf), (df, ind) in data.items()
                 for s in walk(sym, tf, df, ind, c, thresholds)]
@@ -197,12 +197,11 @@ async def main():
         for tf, g in per_tf.items():
             w = sum(1 for s in g if s["result"] == "WIN")
             print(f"  {tf:7s}: {len(g):3d} sinyal | başarı {w / len(g):.1%}")
-        if thresholds in ((3.0, 3.0), (6.0, 4.0)):
-            print("Örnek sinyaller:")
-            for s in sigs[:10]:
-                t = datetime.fromtimestamp(s["ts"] / 1000, timezone.utc)
-                print(f"  {t:%d.%m %H:%M} {s['sym']:9s} {s['tf']} {s['dir']:5s} "
-                      f"skor {s['score']} [{s['rules']}] -> {s['result']} {s['pnl']:+.2f}%")
+        print("Örnek sinyaller:")
+        for s in sigs[:10]:
+            t = datetime.fromtimestamp(s["ts"] / 1000, timezone.utc)
+            print(f"  {t:%d.%m %H:%M} {s['sym']:9s} {s['tf']} {s['dir']:5s} "
+                  f"skor {s['score']} [{s['rules']}] -> {s['result']} {s['pnl']:+.2f}%")
 
 
 if __name__ == "__main__":

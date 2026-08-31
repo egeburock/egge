@@ -3,8 +3,8 @@ import json
 from src.bars import BarAggregator
 from src.engine import SignalEngine
 
-CFG = {"signals": {"threshold": 4.0, "strong_threshold": 8.0,
-                   "min_quote_volume_usd": 0.0},
+CFG = {"signals": {"threshold_long": 4.0, "threshold_short": 4.0,
+                   "strong_threshold": 8.0, "min_quote_volume_usd": 0.0},
        "timeframes": {"cooldown_s": {"5s": 30}}}
 
 

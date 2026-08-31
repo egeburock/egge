@@ -15,7 +15,8 @@ confirm_15m = false
 "5m" = 300
 
 [signals]
-threshold = 5.0
+threshold_long = 6.0
+threshold_short = 4.0
 strong_threshold = 8.0
 ema_fast = 9
 ema_slow = 21
