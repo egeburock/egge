@@ -1,0 +1,59 @@
+import asyncio
+import logging
+
+import aiohttp
+import pandas as pd
+
+log = logging.getLogger(__name__)
+BASE = "https://fapi.binance.com"
+
+
+def parse_klines(raw: list, symbol: str, interval: str) -> pd.DataFrame:
+    rows = [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]),
+             float(k[7])] for k in raw]
+    df = pd.DataFrame(rows, columns=["ts", "open", "high", "low", "close", "quote_volume"])
+    df.attrs["symbol"] = symbol
+    df.attrs["timeframe"] = interval
+    return df
+
+
+class BinanceRest:
+    def __init__(self, session: aiohttp.ClientSession | None):
+        self.session = session
+
+    async def _get(self, url: str, params: dict | None = None):
+        return await self.session.get(url, params=params)
+
+    async def _json(self, path: str, params: dict, retries: int = 3):
+        for i in range(retries):
+            r = await self._get(BASE + path, params)
+            try:
+                if r.status == 429:
+                    await asyncio.sleep(2 ** i)
+                    continue
+                r.raise_for_status()
+                return await r.json()
+            finally:
+                close = getattr(r, "close", None)
+                if close:
+                    close()
+        raise RuntimeError(f"{path} için denemeler tükendi")
+
+    async def klines(self, symbol: str, interval: str, limit: int = 200) -> pd.DataFrame:
+        raw = await self._json("/fapi/v1/klines",
+                               {"symbol": symbol, "interval": interval, "limit": limit})
+        return parse_klines(raw[:-1], symbol, interval)  # son mum açık -> atla
+
+    async def premium_index(self, symbol: str) -> float | None:
+        data = await self._json("/fapi/v1/premiumIndex", {"symbol": symbol})
+        return float(data["lastFundingRate"]) if data else None
+
+    async def open_interest(self, symbol: str) -> float | None:
+        data = await self._json("/fapi/v1/openInterest", {"symbol": symbol})
+        return float(data["openInterest"]) if data else None
+
+    async def exchange_info(self) -> list[str]:
+        data = await self._json("/fapi/v1/exchangeInfo", {})
+        return [s["symbol"] for s in data["symbols"]
+                if s["quoteAsset"] == "USDT" and s["contractType"] == "PERPETUAL"
+                and s["status"] == "TRADING"]
