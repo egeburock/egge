@@ -1,8 +1,20 @@
 import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import ADXIndicator, EMAIndicator, MACD
+from ta.volatility import AverageTrueRange
 
 from src.models import RuleHit
+
+
+def atr_value(df: pd.DataFrame, window: int = 14) -> float | None:
+    if len(df) < window + 1:
+        return None
+    atr = AverageTrueRange(df["high"], df["low"], df["close"],
+                           window=window).average_true_range()
+    last = atr.iloc[-1]
+    if pd.isna(last) or last <= 0:
+        return None
+    return float(last)
 
 
 def ema_cross(df: pd.DataFrame, fast: int, slow: int) -> list[RuleHit]:

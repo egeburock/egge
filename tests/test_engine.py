@@ -72,3 +72,26 @@ def test_directional_thresholds():
     assert sigs and sigs[0].direction == "SHORT" and sigs[0].score == 5.0
     long_hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
     assert eng.evaluate(bar, long_hits, None, None) == []
+
+
+def test_atr_stop_long():
+    eng = make_engine()
+    hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 105, 99, 103, 90000.0)
+    s = eng.evaluate(bar, hits, None, None, atr=2.0)[0]
+    assert s.stop == 103 - 1.5 * 2.0
+
+
+def test_atr_stop_short():
+    eng = make_engine()
+    hits = [RuleHit("ema_cross", "SHORT: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 105, 99, 103, 90000.0)
+    s = eng.evaluate(bar, hits, None, None, atr=2.0)[0]
+    assert s.stop == 103 + 1.5 * 2.0
+
+
+def test_stop_none_without_atr():
+    eng = make_engine()
+    hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 105, 99, 103, 90000.0)
+    assert eng.evaluate(bar, hits, None, None)[0].stop is None

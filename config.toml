@@ -30,6 +30,7 @@ price_jump_pct = 2.0
 funding_crowded = 0.0005
 funding_extreme_neg = -0.0003
 min_quote_volume_usd = 50000.0
+stop_atr_mult = 1.5
 
 [aggressive]
 enabled = false

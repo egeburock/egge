@@ -16,11 +16,13 @@ class SignalEngine:
         self.short_threshold = sig["threshold_short"]
         self.strong_threshold = sig["strong_threshold"]
         self.min_quote_volume = sig.get("min_quote_volume_usd", 0.0)
+        self.stop_atr_mult = sig.get("stop_atr_mult", 1.5)
         self.cooldowns: dict[str, int] = dict(cfg["timeframes"]["cooldown_s"])
         self._last: dict[tuple[str, str, str], int] = {}
 
     def evaluate(self, bar: Bar, hits: list[RuleHit],
-                 funding_rate: float | None, oi_pct: float | None) -> list[Signal]:
+                 funding_rate: float | None, oi_pct: float | None,
+                 atr: float | None = None) -> list[Signal]:
         if bar.quote_volume < self.min_quote_volume:
             return []
         long_score = sum(h.score for h in hits if _direction_of(h) == "LONG")
@@ -39,6 +41,10 @@ class SignalEngine:
         if last is not None and bar.close_ts - last <= cd_ms:
             return []
         self._last[key] = bar.close_ts
+        stop = None
+        if atr is not None and atr > 0:
+            dist = self.stop_atr_mult * atr
+            stop = bar.close - dist if direction == "LONG" else bar.close + dist
         return [Signal(bar.symbol, bar.timeframe, direction,
                        strong=score >= self.strong_threshold, score=score,
-                       price=bar.close, stop=None, ts=bar.close_ts, hits=keep)]
+                       price=bar.close, stop=stop, ts=bar.close_ts, hits=keep)]

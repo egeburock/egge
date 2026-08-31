@@ -11,6 +11,7 @@ from src.engine import SignalEngine
 from src.klines import BinanceRest
 from src.models import Bar
 from src.notify import Notifier
+from src import rules
 from src.web import create_app
 from src.ws_feed import WsFeed
 
@@ -45,8 +46,9 @@ class Agent:
                 if df is None or len(df) < 30:
                     return
                 hits = self.collect_hits(df, bar.symbol)
+                atr = rules.atr_value(df)
                 for sig in engine.evaluate(bar, hits,
-                                           self.funding.get(bar.symbol), None):
+                                           self.funding.get(bar.symbol), None, atr):
                     self.db.save_signal(sig)
                     await notifier.send(sig)
 
@@ -71,7 +73,6 @@ class Agent:
             return None
 
     def collect_hits(self, df, symbol: str):
-        from src import rules
         c = self.cfg["signals"]
         hits = []
         hits += rules.ema_cross(df, c["ema_fast"], c["ema_slow"])
@@ -98,7 +99,8 @@ class Agent:
                               last["open"], last["high"], last["low"], last["close"],
                               last["quote_volume"])
                     hits = self.collect_hits(df, sym)
-                    for sig in self.engine.evaluate(bar, hits, self.funding.get(sym), None):
+                    atr = rules.atr_value(df)
+                    for sig in self.engine.evaluate(bar, hits, self.funding.get(sym), None, atr):
                         self.db.save_signal(sig)
                         await self.notifier.send(sig)
             await asyncio.sleep(60)
