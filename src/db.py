@@ -12,19 +12,54 @@ class Database:
         CREATE TABLE IF NOT EXISTS signals (
             id INTEGER PRIMARY KEY, ts INTEGER, symbol TEXT, timeframe TEXT,
             direction TEXT, strong INTEGER, score REAL, price REAL,
-            stop REAL, hits_json TEXT);
+            stop REAL, hits_json TEXT, target REAL,
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            exit_price REAL, closed_ts INTEGER, result_r REAL);
         CREATE TABLE IF NOT EXISTS tg_queue (
             id INTEGER PRIMARY KEY, text TEXT, sent INTEGER DEFAULT 0);
         """)
+        self._migrate_signals()
+
+    def _migrate_signals(self):
+        for col, ddl in (("target", "target REAL"),
+                         ("status", "status TEXT NOT NULL DEFAULT 'OPEN'"),
+                         ("exit_price", "exit_price REAL"),
+                         ("closed_ts", "closed_ts INTEGER"),
+                         ("result_r", "result_r REAL")):
+            try:
+                self.conn.execute(f"ALTER TABLE signals ADD COLUMN {ddl}")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
 
     def save_signal(self, s: Signal):
         hits = [{"rule": h.rule, "detail": h.detail, "score": h.score} for h in s.hits]
         self.conn.execute(
-            "INSERT INTO signals (ts, symbol, timeframe, direction, strong, score, price, stop, hits_json)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals (ts, symbol, timeframe, direction, strong, score, price,"
+            " stop, target, hits_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (s.ts, s.symbol, s.timeframe, s.direction, int(s.strong), s.score,
-             s.price, s.stop, json.dumps(hits, ensure_ascii=False)))
+             s.price, s.stop, s.target, json.dumps(hits, ensure_ascii=False)))
         self.conn.commit()
+
+    def open_signals(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM signals WHERE status = 'OPEN' ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def close_signal(self, sig_id: int, status: str, exit_price: float,
+                     closed_ts: int, result_r: float | None):
+        self.conn.execute(
+            "UPDATE signals SET status = ?, exit_price = ?, closed_ts = ?, result_r = ?"
+            " WHERE id = ?",
+            (status, exit_price, closed_ts, result_r, sig_id))
+        self.conn.commit()
+
+    def signal_stats(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT direction, status, COUNT(*) AS n, AVG(result_r) AS avg_r"
+            " FROM signals WHERE status != 'OPEN' GROUP BY direction, status"
+            " ORDER BY direction, status").fetchall()
+        return [dict(r) for r in rows]
 
     def recent_signals(self, limit: int = 50, symbol: str | None = None) -> list[dict]:
         q = "SELECT * FROM signals"

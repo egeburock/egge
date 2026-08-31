@@ -6,7 +6,7 @@ from src.notify import Notifier, format_signal
 
 
 def make_signal():
-    return Signal("SOLUSDT", "15s", "LONG", True, 7.0, 198.42, 196.10, 1000,
+    return Signal("SOLUSDT", "15s", "LONG", True, 7.0, 198.42, 196.10, 201.50, 1000,
                   [RuleHit("ema_cross", "LONG: EMA9>EMA21 kesişim", 3.0),
                    RuleHit("volume_spike", "Hacim 4.2x (20-bar ort.)", 2.0),
                    RuleHit("oi_confirm", "LONG teyit: OI +2.1% fiyatla aynı yön", 1.0)])

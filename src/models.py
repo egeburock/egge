@@ -30,5 +30,6 @@ class Signal:
     score: float
     price: float
     stop: float | None
+    target: float | None
     ts: int               # unix ms
     hits: list[RuleHit] = field(default_factory=list)

@@ -13,6 +13,10 @@ def create_app(db, status_provider) -> FastAPI:
     def signals(limit: int = 100, symbol: str | None = None):
         return db.recent_signals(limit=limit, symbol=symbol)
 
+    @app.get("/api/stats")
+    def stats():
+        return db.signal_stats()
+
     @app.get("/", response_class=HTMLResponse)
     def index():
         return """<!doctype html><html><head><meta charset="utf-8">
@@ -30,8 +34,9 @@ td,th{padding:6px 8px;border-bottom:1px solid #21262d;text-align:left}
 <div id="subtitle">Sinyal Akışı</div>
 <div id="status">yükleniyor…</div>
 <table><thead><tr><th>Saat</th><th>Sembol</th><th>Yön</th><th>Dilim</th>
-<th>Skor</th><th>Kurallar</th></tr></thead><tbody id="rows"></tbody></table>
+<th>Skor</th><th>Sonuç</th><th>R</th><th>Kurallar</th></tr></thead><tbody id="rows"></tbody></table>
 <script>
+const SONUC = {'OPEN':'AÇIK','STOPPED':'STOP','TARGET':'HEDEF','EXPIRED':'SÜRE'};
 async function refresh(){
   const [s, sig] = await Promise.all([
     fetch('/api/status').then(r=>r.json()),
@@ -41,9 +46,11 @@ async function refresh(){
   document.getElementById('rows').innerHTML = sig.map(x => {
     const hits = JSON.parse(x.hits_json).map(h=>h.detail).join('; ');
     const d = x.direction === 'LONG' ? 'long' : 'short';
+    const st = x.status || 'OPEN';
+    const r = x.result_r == null ? '-' : Number(x.result_r).toFixed(2);
     return `<tr><td>${new Date(x.ts).toLocaleTimeString()}</td><td>${x.symbol}</td>
     <td class="${d}">${x.strong ? 'GÜÇLÜ ' : ''}${x.direction}</td><td>${x.timeframe}</td>
-    <td>${x.score}</td><td>${hits}</td></tr>`;}).join('');
+    <td>${x.score}</td><td>${SONUC[st] || st}</td><td>${r}</td><td>${hits}</td></tr>`;}).join('');
 }
 refresh(); setInterval(refresh, 3000);
 </script></body></html>"""

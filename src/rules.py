@@ -95,6 +95,98 @@ def funding_rule(rate: float | None, crowded: float, extreme_neg: float) -> list
     return []
 
 
+def supertrend(df: pd.DataFrame, length: int, mult: float) -> tuple[int, float | None]:
+    """(trend, stop): trend 1=yukarı, -1=aşağı. Pine'daki Supertrend motorunun eşdeğeri."""
+    if len(df) < length + 2:
+        return 0, None
+    atr = AverageTrueRange(df["high"], df["low"], df["close"],
+                           window=length).average_true_range()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = (hl2 + mult * atr).tolist()
+    lower = (hl2 - mult * atr).tolist()
+    closes = df["close"].tolist()
+    trend = 1 if closes[length] > lower[length] else -1
+    stop = lower[length] if trend == 1 else upper[length]
+    for i in range(length + 1, len(df)):
+        prev_stop = stop
+        if closes[i] > prev_stop and closes[i - 1] <= prev_stop:
+            trend = 1
+        elif closes[i] < prev_stop and closes[i - 1] >= prev_stop:
+            trend = -1
+        if trend == 1:
+            stop = max(lower[i], prev_stop) if not pd.isna(lower[i]) else prev_stop
+        else:
+            stop = min(upper[i], prev_stop) if not pd.isna(upper[i]) else prev_stop
+    return trend, stop
+
+
+def supertrend_rule(df: pd.DataFrame, length: int, mult: float) -> list[RuleHit]:
+    trend, stop = supertrend(df, length, mult)
+    if trend == 1:
+        return [RuleHit("supertrend", f"LONG: Supertrend yukarı (stop {stop:.6g})", 2.0)]
+    if trend == -1:
+        return [RuleHit("supertrend", f"SHORT: Supertrend aşağı (stop {stop:.6g})", 2.0)]
+    return []
+
+
+def volume_zscore(df: pd.DataFrame, z_limit: float) -> list[RuleHit]:
+    v = df["quote_volume"]
+    if len(v) < 50:
+        return []
+    sma = v.rolling(20).mean().iloc[-1]
+    std = v.rolling(50).std().iloc[-1]
+    if pd.isna(sma) or pd.isna(std) or std <= 0:
+        return []
+    z = (v.iloc[-1] - sma) / std
+    if z >= z_limit:
+        return [RuleHit("volume_zscore", f"Balina hacmi: Z-Score {z:.1f} (eşik {z_limit})", 2.0)]
+    return []
+
+
+def absorption(df: pd.DataFrame, body_pct: float, vol_mult: float) -> list[RuleHit]:
+    o, h, l, c = (df[k].iloc[-1] for k in ("open", "high", "low", "close"))
+    rng = h - l
+    if rng <= 0:
+        return []
+    if abs(c - o) / rng * 100 > body_pct:
+        return []
+    v = df["quote_volume"]
+    if len(v) < 21:
+        return []
+    avg = v.iloc[-21:-1].mean()
+    if avg <= 0 or v.iloc[-1] < avg * vol_mult:
+        return []
+    side = "LONG" if c >= o else "SHORT"
+    return [RuleHit("absorption",
+                    f"{side}: emilim (gövde %{abs(c - o) / rng * 100:.0f}, hacim {v.iloc[-1] / avg:.1f}x)",
+                    1.0)]
+
+
+def ob_retest(df: pd.DataFrame, pivot_len: int, trend: int,
+              atr: float | None) -> list[RuleHit]:
+    """Pivot tabanlı Order Block bölgesine dönüş + tepki (retest) sinyali."""
+    if atr is None or len(df) < pivot_len * 3 + 2:
+        return []
+    lows, highs = df["low"].tolist(), df["high"].tolist()
+    n = len(df)
+    p = n - pivot_len - 1  # pivot adayı (sağ bacak kadar geride)
+
+    if trend == 1:
+        if min(lows[p - pivot_len:p]) <= lows[p] or min(lows[p + 1:p + pivot_len + 1]) < lows[p]:
+            return []
+        ob_top = min(df["open"].iloc[p], df["close"].iloc[p])
+        # son bar kutuya dokunup üstünde kapandı mı?
+        if lows[-1] <= ob_top and df["close"].iloc[-1] > ob_top:
+            return [RuleHit("ob_retest", "LONG: boğa OB bölgesinden sekme (retest)", 3.0)]
+    elif trend == -1:
+        if max(highs[p - pivot_len:p]) >= highs[p] or max(highs[p + 1:p + pivot_len + 1]) > highs[p]:
+            return []
+        ob_bot = max(df["open"].iloc[p], df["close"].iloc[p])
+        if highs[-1] >= ob_bot and df["close"].iloc[-1] < ob_bot:
+            return [RuleHit("ob_retest", "SHORT: ayı OB bölgesinden ret (retest)", 3.0)]
+    return []
+
+
 def oi_rule(oi_pct: float | None, price_chg_pct: float) -> list[RuleHit]:
     """oi_pct: son 5 dk OI değişimi; price_chg_pct: aynı aralıkta fiyat değişimi."""
     if oi_pct is None:

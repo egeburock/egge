@@ -12,6 +12,7 @@ from src.klines import BinanceRest
 from src.models import Bar
 from src.notify import Notifier
 from src import rules
+from src.tracker import OutcomeTracker
 from src.web import create_app
 from src.ws_feed import WsFeed
 
@@ -57,9 +58,11 @@ class Agent:
 
             sec_tfs = [t for t in self.cfg["timeframes"]["enabled"] if t.endswith("s")]
             feed = WsFeed(self.symbols, sec_tfs, on_bar)
+            tracker = OutcomeTracker(self.db, self.rest, self.cfg)
             tasks = [asyncio.create_task(feed.run()),
                      asyncio.create_task(self.minute_poller(on_bar_async)),
                      asyncio.create_task(self.funding_poller()),
+                     asyncio.create_task(tracker.run()),
                      asyncio.create_task(self.serve_dashboard(feed))]
             await asyncio.gather(*tasks)
 
@@ -80,6 +83,19 @@ class Agent:
         hits += rules.macd_cross(df)
         hits += rules.volume_spike(df, c["volume_spike_x"], c["volume_avg_bars"])
         hits += rules.price_jump(df, c["price_jump_pct"])
+        trend, _ = rules.supertrend(df, c.get("supertrend_len", 20),
+                                    c.get("supertrend_mult", 2.0))
+        if c.get("use_supertrend", True):
+            hits += rules.supertrend_rule(df, c.get("supertrend_len", 20),
+                                          c.get("supertrend_mult", 2.0))
+        if c.get("use_zscore_whale", True):
+            hits += rules.volume_zscore(df, c.get("whale_z_limit", 3.0))
+        if c.get("use_absorption", True):
+            hits += rules.absorption(df, c.get("absorption_body_pct", 30.0),
+                                     c.get("absorption_vol_mult", 1.5))
+        if c.get("use_ob_retest", True):
+            hits += rules.ob_retest(df, c.get("ob_pivot_len", 5), trend,
+                                    rules.atr_value(df))
         if not rules.adx_ok(df, c["adx_min"]):
             hits = [h for h in hits if h.rule not in ("ema_cross", "macd_cross")]
         hits += rules.funding_rule(self.funding.get(symbol),

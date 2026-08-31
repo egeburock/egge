@@ -9,7 +9,7 @@ from src.web import create_app
 @pytest.fixture
 def client(tmp_path):
     db = Database(str(tmp_path / "t.db"))
-    db.save_signal(Signal("BTCUSDT", "1m", "LONG", False, 6.0, 100.0, None,
+    db.save_signal(Signal("BTCUSDT", "1m", "LONG", False, 6.0, 100.0, None, None,
                           1000, [RuleHit("ema_cross", "LONG: x", 3.0)]))
     return TestClient(create_app(db, status_provider=lambda: {"symbols": 300, "ws": True}))
 

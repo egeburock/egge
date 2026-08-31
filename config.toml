@@ -31,6 +31,21 @@ funding_crowded = 0.0005
 funding_extreme_neg = -0.0003
 min_quote_volume_usd = 50000.0
 stop_atr_mult = 2.0
+target_atr_mult = 3.0
+use_supertrend = true
+supertrend_len = 20
+supertrend_mult = 2.0
+use_zscore_whale = true
+whale_z_limit = 3.0
+use_absorption = true
+absorption_body_pct = 30.0
+absorption_vol_mult = 1.5
+use_ob_retest = true
+ob_pivot_len = 5
+
+[tracking]
+horizon_minutes = 30
+poll_interval_s = 20
 
 [aggressive]
 enabled = false

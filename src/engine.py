@@ -17,6 +17,7 @@ class SignalEngine:
         self.strong_threshold = sig["strong_threshold"]
         self.min_quote_volume = sig.get("min_quote_volume_usd", 0.0)
         self.stop_atr_mult = sig.get("stop_atr_mult", 1.5)
+        self.target_atr_mult = sig.get("target_atr_mult", 3.0)
         self.cooldowns: dict[str, int] = dict(cfg["timeframes"]["cooldown_s"])
         self._last: dict[tuple[str, str, str], int] = {}
 
@@ -41,10 +42,13 @@ class SignalEngine:
         if last is not None and bar.close_ts - last <= cd_ms:
             return []
         self._last[key] = bar.close_ts
-        stop = None
+        stop = target = None
         if atr is not None and atr > 0:
-            dist = self.stop_atr_mult * atr
-            stop = bar.close - dist if direction == "LONG" else bar.close + dist
+            stop_dist = self.stop_atr_mult * atr
+            stop = bar.close - stop_dist if direction == "LONG" else bar.close + stop_dist
+            tgt_dist = self.target_atr_mult * atr
+            target = bar.close + tgt_dist if direction == "LONG" else bar.close - tgt_dist
         return [Signal(bar.symbol, bar.timeframe, direction,
                        strong=score >= self.strong_threshold, score=score,
-                       price=bar.close, stop=stop, ts=bar.close_ts, hits=keep)]
+                       price=bar.close, stop=stop, target=target,
+                       ts=bar.close_ts, hits=keep)]

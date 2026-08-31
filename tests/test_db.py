@@ -4,7 +4,7 @@ from src.models import RuleHit, Signal
 
 def test_save_and_query_signals(tmp_path):
     db = Database(str(tmp_path / "t.db"))
-    s = Signal("BTCUSDT", "1m", "LONG", False, 6.0, 100.0, None, 1000,
+    s = Signal("BTCUSDT", "1m", "LONG", False, 6.0, 100.0, None, None, 1000,
                [RuleHit("ema_cross", "LONG: x", 3.0)])
     db.save_signal(s)
     rows = db.recent_signals(limit=10)
