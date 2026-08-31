@@ -115,7 +115,8 @@ def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
     return ("WIN" if pnl > 0 else "LOSS"), pnl
 
 
-def walk(sym: str, tf: str, df: pd.DataFrame, ind: dict, c: dict, threshold: float):
+def walk(sym: str, tf: str, df: pd.DataFrame, ind: dict, c: dict,
+         thresholds: tuple[float, float]):
     out = []
     horizon = HORIZON[tf]
     cooldown_bars = 3
@@ -133,7 +134,8 @@ def walk(sym: str, tf: str, df: pd.DataFrame, ind: dict, c: dict, threshold: flo
             continue
         direction = "LONG" if ls >= ss else "SHORT"
         score = (ls if direction == "LONG" else ss) + sum(w for _, w in neutral)
-        if score < threshold or i - last[direction] < cooldown_bars:
+        thr = thresholds[0] if direction == "LONG" else thresholds[1]
+        if score < thr or i - last[direction] < cooldown_bars:
             continue
         last[direction] = i
         atr = ind["atr"][i]
@@ -166,10 +168,13 @@ async def main():
                 t1 = datetime.fromtimestamp(df["ts"].iat[-1] / 1000, timezone.utc)
                 span = f"{tf}: {t0:%d.%m %H:%M} - {t1:%d.%m %H:%M} UTC"
 
-    for threshold in (c["threshold"], 3.0):
+    runs = ((c["threshold"], c["threshold"]), (3.0, 3.0), (6.0, 4.0))
+    for thresholds in runs:
         sigs = [s for (sym, tf), (df, ind) in data.items()
-                for s in walk(sym, tf, df, ind, c, threshold)]
-        print(f"\n=== Eşik {threshold} | {len(data)} seri | {span} ===")
+                for s in walk(sym, tf, df, ind, c, thresholds)]
+        lt, st = thresholds
+        label = f"{lt:g}" if lt == st else f"LONG={lt:g} / SHORT={st:g}"
+        print(f"\n=== Eşik {label} | {len(data)} seri | {span} ===")
         if not sigs:
             print("Sinyal yok.")
             continue
@@ -192,7 +197,7 @@ async def main():
         for tf, g in per_tf.items():
             w = sum(1 for s in g if s["result"] == "WIN")
             print(f"  {tf:7s}: {len(g):3d} sinyal | başarı {w / len(g):.1%}")
-        if threshold == 3.0:
+        if thresholds in ((3.0, 3.0), (6.0, 4.0)):
             print("Örnek sinyaller:")
             for s in sigs[:10]:
                 t = datetime.fromtimestamp(s["ts"] / 1000, timezone.utc)
