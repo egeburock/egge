@@ -100,7 +100,7 @@ async def main():
             if best_cfg is None:
                 continue
             (thr_tr, stop_tr, target_tr, be_tr) = best_cfg
-            chosen.append(be_tr)
+            chosen.append(best_cfg)
 
             # Test'te en iyi cfg ile simüle et
             test_sigs = list(opt.walk(test_df, test_pre, c, thr_tr, test_htf))
@@ -123,9 +123,13 @@ async def main():
         wins = [x for x in fold_results if x["result"] == "WIN"]
         avg_pnl = np.mean([x["pnl"] for x in fold_results])
         avg_r = np.mean([x["r"] for x in fold_results])
-        be_dist = ", ".join(f"{b}R x{c}" for b, c in
-                            {b: chosen.count(b) for b in set(chosen)}.items())
-        print(f"\nFold {fold+1}/{n_folds} (seçilen BE tetiği: {be_dist}):")
+        cfg_dist = {}
+        for th, sm, tm, be in chosen:
+            key = f"L{th[0]:g}/S{th[1]:g} stop{sm:g} tgt{tm:g} BE{be:g}"
+            cfg_dist[key] = cfg_dist.get(key, 0) + 1
+        cfg_line = ", ".join(f"{k} x{v}" for k, v in
+                             sorted(cfg_dist.items(), key=lambda kv: -kv[1])[:3])
+        print(f"\nFold {fold+1}/{n_folds} (train seçimleri: {cfg_line}):")
         print(f"  Test sinyalleri: {len(fold_results)} | WR: {len(wins)/len(fold_results):.1%} | "
               f"PnL: {avg_pnl:+.3f}% | R: {avg_r:+.2f}")
         for grp, key in (("LONG", lambda x: x["dir"] == "LONG"),

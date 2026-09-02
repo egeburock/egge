@@ -35,7 +35,7 @@ MIN_SIGNALS = 10
 THRESHOLDS = [(6.0, 4.0), (6.0, 5.0), (6.0, 6.0), (7.0, 5.0), (7.0, 6.0),
               (7.0, 7.0), (8.0, 6.0), (8.0, 7.0)]
 STOP_MULTS = [1.0, 1.5, 2.0, 2.5, 3.0]
-TARGET_MULTS = [2.0, 3.0, 4.0, 5.0, 6.0]
+TARGET_MULTS = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0]
 
 # İşlem maliyetleri (Binance USDT-M Futures varsayılan)
 TAKER_FEE = 0.0004   # 0.04%
@@ -231,6 +231,22 @@ def precompute(df: pd.DataFrame, c: dict) -> dict:
         cand = small_body & vol_ok
         long[cand & (cl >= o)] += 1.0
         short[cand & (cl < o)] += 1.0
+
+    if c.get("use_rsi2_pullback", False):
+        r2 = RSIIndicator(close, window=c.get("rsi2_period", 2)).rsi().to_numpy()
+        with np.errstate(invalid="ignore"):
+            long[~np.isnan(r2) & (st == 1) & (r2 <= c.get("rsi2_oversold", 10.0))] += 3.0
+            short[~np.isnan(r2) & (st == -1) & (r2 >= c.get("rsi2_overbought", 90.0))] += 3.0
+
+    if c.get("use_ema_pullback", False):
+        tol = c.get("ema_pullback_tol_pct", 0.1) / 100
+        pe = c.get("ema_pullback_period", 21)
+        ep = EMAIndicator(close, window=pe).ema_indicator().to_numpy()
+        lo = df["low"].to_numpy()
+        hi2 = df["high"].to_numpy()
+        with np.errstate(invalid="ignore"):
+            long[~np.isnan(ep) & (st == 1) & (lo <= ep * (1 + tol)) & (cl > ep)] += 2.0
+            short[~np.isnan(ep) & (st == -1) & (hi2 >= ep * (1 - tol)) & (cl < ep)] += 2.0
 
     if c.get("use_ob_retest", True):
         pivot_len = c.get("ob_pivot_len", 5)

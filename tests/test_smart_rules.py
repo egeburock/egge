@@ -1,7 +1,7 @@
 import pandas as pd
 
-from src.rules import (absorption, ob_retest, supertrend, supertrend_rule,
-                       volume_zscore)
+from src.rules import (absorption, ema_pullback, ob_retest, rsi2_pullback,
+                       supertrend, supertrend_rule, volume_zscore)
 
 
 def ohlc(rows):
@@ -100,3 +100,40 @@ def test_ob_bear_retest():
     df = _pivot_high_df()
     hits = ob_retest(df, pivot_len=2, trend=-1, atr=1.0)
     assert any(h.rule == "ob_retest" and "SHORT" in h.detail for h in hits)
+
+
+def test_rsi2_pullback_long_in_uptrend():
+    closes = [100 + i * 2 for i in range(40)]
+    closes += [closes[-1] - 10, closes[-1] - 20]  # sert 2 barlık dip
+    df = ohlc([[c - 0.5, c + 0.5, c - 1, c, 1000.0] for c in closes])
+    hits = rsi2_pullback(df, trend=1)
+    assert hits and hits[0].rule == "rsi2_pullback" and "LONG" in hits[0].detail
+
+
+def test_rsi2_pullback_requires_trend_alignment():
+    closes = [100 + i * 2 for i in range(40)]
+    closes += [closes[-1] - 10, closes[-1] - 20]
+    df = ohlc([[c - 0.5, c + 0.5, c - 1, c, 1000.0] for c in closes])
+    assert rsi2_pullback(df, trend=-1) == []
+    assert rsi2_pullback(df, trend=0) == []
+
+
+def test_ema_pullback_long_dip_to_ema():
+    from ta.trend import EMAIndicator
+    closes = [100 + i * 1.5 for i in range(60)]
+    df = ohlc([[c - 0.2, c + 0.2, c - 1, c, 1000.0] for c in closes])
+    e = float(EMAIndicator(df["close"], window=21).ema_indicator().iloc[-1])
+    # son bar EMA'ya değip üstünde kapanıyor
+    df.loc[len(df)] = [e - 0.3, e + 0.7, e * 0.999, e + 0.2, 1000.0]
+    hits = ema_pullback(df, trend=1)
+    assert hits and "LONG" in hits[0].detail
+
+
+def test_ema_pullback_requires_trend_alignment():
+    from ta.trend import EMAIndicator
+    closes = [100 + i * 1.5 for i in range(60)]
+    df = ohlc([[c - 0.2, c + 0.2, c - 1, c, 1000.0] for c in closes])
+    e = float(EMAIndicator(df["close"], window=21).ema_indicator().iloc[-1])
+    df.loc[len(df)] = [e - 0.3, e + 0.7, e * 0.999, e + 0.2, 1000.0]
+    assert ema_pullback(df, trend=-1) == []
+    assert ema_pullback(df, trend=0) == []

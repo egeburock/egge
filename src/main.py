@@ -146,6 +146,13 @@ class Agent:
         if c.get("use_ob_retest", True):
             hits += rules.ob_retest(df, c.get("ob_pivot_len", 5), trend,
                                     rules.atr_value(df))
+        if c.get("use_rsi2_pullback", False):
+            hits += rules.rsi2_pullback(df, trend, c.get("rsi2_period", 2),
+                                        c.get("rsi2_oversold", 10.0),
+                                        c.get("rsi2_overbought", 90.0))
+        if c.get("use_ema_pullback", False):
+            hits += rules.ema_pullback(df, trend, c.get("ema_pullback_period", 21),
+                                       c.get("ema_pullback_tol_pct", 0.1))
         if not rules.adx_ok(df, c["adx_min"]):
             hits = [h for h in hits if h.rule not in ("ema_cross", "macd_cross")]
         hits += rules.funding_rule(self.funding.get(symbol),

@@ -204,3 +204,47 @@ def oi_rule(oi_pct: float | None, price_chg_pct: float) -> list[RuleHit]:
     if oi_pct > 1.0 and abs(price_chg_pct) < 0.2:
         return [RuleHit("oi_confirm", f"Sıkışmış yay: OI +{oi_pct:.1f}%, fiyat yatay", 1.0)]
     return []
+
+
+def rsi2_pullback(df: pd.DataFrame, trend: int, period: int = 2,
+                  oversold: float = 10.0, overbought: float = 90.0) -> list[RuleHit]:
+    """Connors tarzı: trend içindeki aşırı dip/pump'a karşı mean reversion.
+
+    RSI(period) aşırı uçlara savrulduğunda ve Supertrend trendiyle hizalıysa
+    dönüş vuruşu arar (uptrend'de LONG dip, downtrend'de SHORT pump).
+    """
+    r = RSIIndicator(df["close"], window=period).rsi()
+    if len(df) < period + 2 or pd.isna(r.iloc[-1]):
+        return []
+    last = float(r.iloc[-1])
+    if trend == 1 and last <= oversold:
+        return [RuleHit("rsi2_pullback",
+                        f"LONG: RSI({period}) dibi {last:.0f} (trend yukarı)", 3.0)]
+    if trend == -1 and last >= overbought:
+        return [RuleHit("rsi2_pullback",
+                        f"SHORT: RSI({period}) pompası {last:.0f} (trend aşağı)", 3.0)]
+    return []
+
+
+def ema_pullback(df: pd.DataFrame, trend: int, period: int = 21,
+                 tol_pct: float = 0.1) -> list[RuleHit]:
+    """NFI tarzı: trend yönünde EMA{period}'a geri çekilme + tepki.
+
+    Uptrend'de fiyat EMA'ya değip üstünde kapanırsa LONG; downtrend'de
+    EMA'ya değip altında kapanırsa SHORT.
+    """
+    ema = EMAIndicator(df["close"], window=period).ema_indicator()
+    if len(df) < period + 2 or pd.isna(ema.iloc[-1]):
+        return []
+    c = df["close"].iloc[-1]
+    e = float(ema.iloc[-1])
+    tol = tol_pct / 100
+    if trend == 1 and df["low"].iloc[-1] <= e * (1 + tol) and c > e:
+        return [RuleHit("ema_pullback",
+                        f"LONG: EMA{period} dönüşü (dip {df['low'].iloc[-1]:.6g} / "
+                        f"EMA {e:.6g})", 2.0)]
+    if trend == -1 and df["high"].iloc[-1] >= e * (1 - tol) and c < e:
+        return [RuleHit("ema_pullback",
+                        f"SHORT: EMA{period} ret (tepe {df['high'].iloc[-1]:.6g} / "
+                        f"EMA {e:.6g})", 2.0)]
+    return []
