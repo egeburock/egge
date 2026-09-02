@@ -4,3 +4,4 @@ __pycache__/
 logs/
 .env
 *.egg-info/
+optimize_out.txt

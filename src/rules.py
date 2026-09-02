@@ -121,11 +121,17 @@ def supertrend(df: pd.DataFrame, length: int, mult: float) -> tuple[int, float |
 
 
 def supertrend_rule(df: pd.DataFrame, length: int, mult: float) -> list[RuleHit]:
+    """Supertrend yalnızca yön değiştirdiğinde ateşlenir (trend süren her barda değil)."""
+    if len(df) < length + 3:
+        return []
+    prev, _ = supertrend(df.iloc[:-1], length, mult)
     trend, stop = supertrend(df, length, mult)
+    if trend == prev:
+        return []
     if trend == 1:
-        return [RuleHit("supertrend", f"LONG: Supertrend yukarı (stop {stop:.6g})", 2.0)]
+        return [RuleHit("supertrend", f"LONG: Supertrend yukarı döndü (stop {stop:.6g})", 2.0)]
     if trend == -1:
-        return [RuleHit("supertrend", f"SHORT: Supertrend aşağı (stop {stop:.6g})", 2.0)]
+        return [RuleHit("supertrend", f"SHORT: Supertrend aşağı döndü (stop {stop:.6g})", 2.0)]
     return []
 
 

@@ -136,8 +136,10 @@ def precompute(df: pd.DataFrame, c: dict) -> dict:
     if c.get("use_supertrend", True):
         st = supertrend_series(df, c.get("supertrend_len", 20),
                                c.get("supertrend_mult", 2.0))
-        long[st == 1] += 2.0
-        short[st == -1] += 2.0
+        flip_up = (st[1:] == 1) & (st[:-1] != 1)
+        flip_dn = (st[1:] == -1) & (st[:-1] != -1)
+        long[1:][flip_up] += 2.0
+        short[1:][flip_dn] += 2.0
     else:
         st = np.zeros(n)
 

@@ -28,11 +28,23 @@ def test_supertrend_downtrend():
     assert stop is not None and stop > df["close"].iloc[-1]
 
 
-def test_supertrend_rule_directions():
+def test_supertrend_rule_no_hit_on_steady_trend():
     up = ohlc([[c - 1, c + 1, c - 2, c, 1000.0] for c in (100 + i * 2 for i in range(80))])
-    down = ohlc([[c + 1, c + 2, c - 1, c, 1000.0] for c in (260 - i * 2 for i in range(80))])
-    assert any("LONG" in h.detail for h in supertrend_rule(up, 20, 2.0))
-    assert any("SHORT" in h.detail for h in supertrend_rule(down, 20, 2.0))
+    assert supertrend_rule(up, 20, 2.0) == []
+
+
+def test_supertrend_rule_fires_on_flip():
+    rows = []
+    price = 100.0
+    for _ in range(40):
+        price += 2.0
+        rows.append([price - 1, price + 1, price - 2, price, 1000.0])
+    for _ in range(12):
+        price -= 10.0
+        rows.append([price, price + 1, price - 1, price, 1000.0])
+    df = ohlc(rows)
+    hits = supertrend_rule(df.iloc[:41], 20, 2.0)
+    assert hits and "SHORT" in hits[0].detail
 
 
 def test_volume_zscore_whale():
