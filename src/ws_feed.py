@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 
 import aiohttp
@@ -21,29 +22,44 @@ class WsFeed:
         self.on_bar = on_bar
         self.aggregators: dict[tuple[str, str], BarAggregator] = {
             (s, tf): BarAggregator(s, tf) for s in symbols for tf in self.timeframes}
-        self.connected = False
+        self._known = set(symbols)
+        self._open_conns = 0
+
+    @property
+    def connected(self) -> bool:
+        return self._open_conns > 0
 
     async def run(self):
-        urls = build_stream_urls(self.symbols)
+        if not self.timeframes:
+            return
+        await asyncio.gather(*(self._run_one(url)
+                               for url in build_stream_urls(self.symbols)))
+
+    async def _run_one(self, url: str):
         backoff = 1
         while True:
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.ws_connect(urls[0]) as ws:
-                        self.connected = True
+                    async with session.ws_connect(url) as ws:
+                        self._open_conns += 1
                         backoff = 1
-                        await self._handle_ws(ws)
+                        try:
+                            await self._handle_ws(ws)
+                        finally:
+                            self._open_conns -= 1
             except Exception as e:
                 log.warning("WS hata: %s — %ss sonra yeniden", e, backoff)
-            self.connected = False
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60)
 
     async def _handle_ws(self, ws):
         async for msg in ws:
-            data = msg.get("data", msg) if isinstance(msg, dict) else {}
+            if msg.type != aiohttp.WSMsgType.TEXT:
+                continue
+            payload = json.loads(msg.data)
+            data = payload.get("data", payload)
             sym = data.get("s")
-            if not sym:
+            if not sym or sym not in self._known:
                 continue
             ts, price, qty = int(data["T"]), float(data["p"]), float(data["q"])
             for tf in self.timeframes:

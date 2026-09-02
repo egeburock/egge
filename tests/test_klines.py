@@ -38,3 +38,19 @@ async def test_rate_limit_and_retry():
     br._get = fake_get
     out = await br.klines("BTCUSDT", "1m", limit=2)
     assert len(out) == 1 and calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_all_prices_and_funding_batch():
+    async def fake_json(path, params, retries=3):
+        assert params == {}
+        if path.endswith("/ticker/price"):
+            return [{"symbol": "BTCUSDT", "price": "100.5"},
+                    {"symbol": "ETHUSDT", "price": "200.25"}]
+        return [{"symbol": "BTCUSDT", "lastFundingRate": "0.0001"},
+                {"symbol": "ETHUSDT", "lastFundingRate": "-0.0002"}]
+
+    br = BinanceRest(session=None)
+    br._json = fake_json
+    assert await br.all_prices() == {"BTCUSDT": 100.5, "ETHUSDT": 200.25}
+    assert await br.all_funding() == {"BTCUSDT": 0.0001, "ETHUSDT": -0.0002}

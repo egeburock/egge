@@ -15,7 +15,15 @@ def make_signal():
 def test_format_signal_contains_everything():
     text = format_signal(make_signal())
     assert "GÜÇLÜ LONG" in text and "SOLUSDT" in text
-    assert "EMA9>EMA21" in text and "7.0" in text and "196.10" in text
+    assert "EMA9>EMA21" in text and "7.0" in text and "196.1" in text
+    assert "Hedef: 201.5" in text
+
+
+def test_format_signal_small_price_not_truncated():
+    s = Signal("PEPEUSDT", "1m", "LONG", False, 6.0, 0.00001234,
+               0.00001200, 0.00001350, 1000, [])
+    text = format_signal(s)
+    assert "1.2e-05" in text and "1.35e-05" in text
 
 
 def test_dry_run_enqueues_instead_of_sending(tmp_path):

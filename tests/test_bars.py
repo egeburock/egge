@@ -1,4 +1,5 @@
-from src.bars import BarAggregator
+from src.bars import BarAggregator, bars_to_df
+from src.models import Bar
 
 
 def test_aggregates_5s_bar_from_ticks():
@@ -27,3 +28,12 @@ def test_no_trade_gap_marks_bar_invalid():
     bar = agg.on_trade(12000, 101.0, 101.0)
     assert bar is None or bar is not None
     assert agg.last_open_ts == 10000
+
+
+def test_bars_to_df_columns_and_order():
+    bars = [Bar("BTCUSDT", "5s", 0, 5000, 100, 105, 99, 103, 400.0),
+            Bar("BTCUSDT", "5s", 5000, 10000, 103, 106, 102, 105, 300.0)]
+    df = bars_to_df(bars)
+    assert list(df.columns) == ["ts", "open", "high", "low", "close", "quote_volume"]
+    assert len(df) == 2
+    assert df.iloc[0]["close"] == 103.0 and df.iloc[1]["quote_volume"] == 300.0

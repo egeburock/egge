@@ -13,8 +13,8 @@ class FakeRest:
     def __init__(self, price):
         self.price = price
 
-    async def last_price(self, symbol):
-        return self.price
+    async def all_prices(self):
+        return {"BTCUSDT": self.price, "ETHUSDT": self.price}
 
 
 def open_db(tmp_path, sig: Signal):

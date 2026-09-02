@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from collections import deque
 from pathlib import Path
 
 import aiohttp
 import uvicorn
 
+from src.bars import bars_to_df
 from src.config import load_config, tf_seconds
 from src.db import Database
 from src.engine import SignalEngine
@@ -20,6 +22,9 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("main")
 
+POLL_CONCURRENCY = 10
+SEC_HISTORY = 200
+
 
 class Agent:
     def __init__(self, cfg: dict):
@@ -31,6 +36,7 @@ class Agent:
         self.symbols: list[str] = []
         self.rest = BinanceRest(None)
         self.funding: dict[str, float | None] = {}
+        self.sec_history: dict[tuple[str, str], deque] = {}
 
     async def start(self):
         async with aiohttp.ClientSession() as session:
@@ -40,31 +46,40 @@ class Agent:
                 self.symbols = [s for s in self.symbols
                                 if s in self.cfg["aggressive"]["symbols"]]
             log.info("Taranacak sembol: %d", len(self.symbols))
-            engine, notifier = self.engine, self.notifier
-
-            async def on_bar_async(bar):
-                df = await self.bar_history(bar.symbol, bar.timeframe)
-                if df is None or len(df) < 30:
-                    return
-                hits = self.collect_hits(df, bar.symbol)
-                atr = rules.atr_value(df)
-                for sig in engine.evaluate(bar, hits,
-                                           self.funding.get(bar.symbol), None, atr):
-                    self.db.save_signal(sig)
-                    await notifier.send(sig)
-
-            def on_bar(bar):
-                asyncio.create_task(on_bar_async(bar))
-
             sec_tfs = [t for t in self.cfg["timeframes"]["enabled"] if t.endswith("s")]
-            feed = WsFeed(self.symbols, sec_tfs, on_bar)
+            feed = WsFeed(self.symbols, sec_tfs,
+                          lambda bar: asyncio.create_task(self.on_bar_closed(bar)))
             tracker = OutcomeTracker(self.db, self.rest, self.cfg)
             tasks = [asyncio.create_task(feed.run()),
-                     asyncio.create_task(self.minute_poller(on_bar_async)),
+                     asyncio.create_task(self.minute_poller()),
                      asyncio.create_task(self.funding_poller()),
                      asyncio.create_task(tracker.run()),
                      asyncio.create_task(self.serve_dashboard(feed))]
             await asyncio.gather(*tasks)
+
+    async def on_bar_closed(self, bar: Bar):
+        if bar.timeframe.endswith("s"):
+            df = self._sec_df(bar)
+        else:
+            df = await self.bar_history(bar.symbol, bar.timeframe)
+        if df is None or len(df) < 30:
+            return
+        for sig in self.evaluate_df(df, bar):
+            self.db.save_signal(sig)
+            await self.notifier.send(sig)
+
+    def _sec_df(self, bar: Bar):
+        hist = self.sec_history.setdefault(
+            (bar.symbol, bar.timeframe), deque(maxlen=SEC_HISTORY))
+        if hist and bar.open_ts <= hist[-1].open_ts:
+            return None
+        hist.append(bar)
+        return bars_to_df(hist)
+
+    def evaluate_df(self, df, bar: Bar):
+        hits = self.collect_hits(df, bar.symbol)
+        atr = rules.atr_value(df)
+        return self.engine.evaluate(bar, hits, self.funding.get(bar.symbol), None, atr)
 
     async def bar_history(self, symbol: str, tf: str):
         if tf.endswith("s"):
@@ -102,39 +117,45 @@ class Agent:
                                    c["funding_crowded"], c["funding_extreme_neg"])
         return hits
 
-    async def minute_poller(self, on_bar_async):
+    async def minute_poller(self):
         minute_tfs = [t for t in self.cfg["timeframes"]["enabled"] if t.endswith("m")]
+        sem = asyncio.Semaphore(POLL_CONCURRENCY)
+
+        async def scan(sym: str, tf: str):
+            async with sem:
+                df = await self.bar_history(sym, tf)
+            if df is None or df.empty:
+                return
+            last = df.iloc[-1]
+            bar = Bar(sym, tf, int(last["ts"]), int(last["ts"]) + tf_seconds(tf) * 1000,
+                      last["open"], last["high"], last["low"], last["close"],
+                      last["quote_volume"])
+            for sig in self.evaluate_df(df, bar):
+                self.db.save_signal(sig)
+                await self.notifier.send(sig)
+
         while True:
-            for tf in minute_tfs:
-                for sym in self.symbols:
-                    df = await self.bar_history(sym, tf)
-                    if df is None or df.empty:
-                        continue
-                    last = df.iloc[-1]
-                    bar = Bar(sym, tf, int(last["ts"]), int(last["ts"]) + tf_seconds(tf) * 1000,
-                              last["open"], last["high"], last["low"], last["close"],
-                              last["quote_volume"])
-                    hits = self.collect_hits(df, sym)
-                    atr = rules.atr_value(df)
-                    for sig in self.engine.evaluate(bar, hits, self.funding.get(sym), None, atr):
-                        self.db.save_signal(sig)
-                        await self.notifier.send(sig)
+            await asyncio.gather(*(scan(sym, tf) for tf in minute_tfs
+                                   for sym in self.symbols))
             await asyncio.sleep(60)
 
     async def funding_poller(self):
         while True:
-            for sym in self.symbols[:50]:
-                try:
-                    self.funding[sym] = await self.rest.premium_index(sym)
-                except Exception:
-                    pass
+            try:
+                self.funding = await self.rest.all_funding()
+            except Exception as e:
+                log.warning("funding oranları alınamadı: %s", e)
             await asyncio.sleep(60)
 
     async def serve_dashboard(self, feed):
         app = create_app(self.db, lambda: {"symbols": len(self.symbols),
                                            "ws": feed.connected})
         config = uvicorn.Config(app, host="127.0.0.1", port=self.cfg["web"]["port"])
-        await uvicorn.Server(config).serve()
+        try:
+            await uvicorn.Server(config).serve()
+        except SystemExit:
+            log.error("Dashboard başlatılamadı (port %d kullanımda olabilir) — "
+                      "ajan taramaya devam ediyor", self.cfg["web"]["port"])
 
 
 def main():

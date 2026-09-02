@@ -23,11 +23,16 @@ class OutcomeTracker:
 
     async def check_once(self, now_ms: int | None = None):
         now = now_ms if now_ms is not None else int(time.time() * 1000)
-        for row in self.db.open_signals():
-            try:
-                price = await self.rest.last_price(row["symbol"])
-            except Exception:
-                continue
+        rows = self.db.open_signals()
+        if not rows:
+            return
+        try:
+            prices = await self.rest.all_prices()
+        except Exception as e:
+            log.warning("fiyatlar alınamadı: %s", e)
+            return
+        for row in rows:
+            price = prices.get(row["symbol"])
             if price is None:
                 continue
             self.resolve(row, price, now)

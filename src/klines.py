@@ -56,6 +56,14 @@ class BinanceRest:
         data = await self._json("/fapi/v1/ticker/price", {"symbol": symbol})
         return float(data["price"]) if data else None
 
+    async def all_prices(self) -> dict[str, float]:
+        data = await self._json("/fapi/v1/ticker/price", {})
+        return {d["symbol"]: float(d["price"]) for d in data}
+
+    async def all_funding(self) -> dict[str, float]:
+        data = await self._json("/fapi/v1/premiumIndex", {})
+        return {d["symbol"]: float(d["lastFundingRate"]) for d in data}
+
     async def exchange_info(self) -> list[str]:
         data = await self._json("/fapi/v1/exchangeInfo", {})
         return [s["symbol"] for s in data["symbols"]

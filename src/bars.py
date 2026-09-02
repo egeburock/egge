@@ -1,5 +1,13 @@
+import pandas as pd
+
 from src.config import tf_seconds
 from src.models import Bar
+
+
+def bars_to_df(bars: list[Bar]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [(b.open_ts, b.open, b.high, b.low, b.close, b.quote_volume) for b in bars],
+        columns=["ts", "open", "high", "low", "close", "quote_volume"])
 
 
 class BarAggregator:

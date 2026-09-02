@@ -6,8 +6,11 @@ Funding/OI geçmişte olmadığı için devre dışı (canlıda da OI None).
 """
 import asyncio
 import math
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import aiohttp
 import numpy as np

@@ -9,12 +9,14 @@ def format_signal(s: Signal) -> str:
     emoji = "🟢" if s.direction == "LONG" else "🔴"
     strength = "GÜÇLÜ " if s.strong else ""
     lines = [f"{emoji} {strength}{s.direction} — {s.symbol}",
-             f"Fiyat: {s.price} | Zaman dilimi: {s.timeframe}",
+             f"Fiyat: {s.price:.6g} | Zaman dilimi: {s.timeframe}",
              "Tetikleyen kurallar:"]
     lines += [f"• {h.detail}" for h in s.hits]
     lines.append(f"Skor: {s.score}")
     if s.stop:
-        lines.append(f"Stop önerisi: {s.stop:.2f} (ATR bazlı)")
+        lines.append(f"Stop önerisi: {s.stop:.6g} (ATR bazlı)")
+    if s.target:
+        lines.append(f"Hedef: {s.target:.6g}")
     return "\n".join(lines)
 
 
