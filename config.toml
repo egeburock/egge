@@ -4,7 +4,6 @@ dry_run = true
 
 [timeframes]
 enabled = ["5s", "15s", "1m"]
-confirm_15m = false
 
 [timeframes.cooldown_s]
 "3s" = 15
@@ -42,6 +41,8 @@ absorption_body_pct = 30.0
 absorption_vol_mult = 1.5
 use_ob_retest = true
 ob_pivot_len = 5
+use_htf_filter = true
+htf_timeframe = "1h"
 
 [tracking]
 horizon_minutes = 30

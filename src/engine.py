@@ -1,7 +1,7 @@
 from src.models import Bar, RuleHit, Signal
 
 
-def _direction_of(hit: RuleHit) -> str | None:
+def direction_of(hit: RuleHit) -> str | None:
     if "LONG" in hit.detail or "Sıkışmış yay" in hit.detail:
         return "LONG"
     if "SHORT" in hit.detail:
@@ -25,12 +25,12 @@ class SignalEngine:
                  atr: float | None = None) -> list[Signal]:
         if bar.quote_volume < self.min_quote_volume:
             return []
-        long_score = sum(h.score for h in hits if _direction_of(h) == "LONG")
-        short_score = sum(h.score for h in hits if _direction_of(h) == "SHORT")
+        long_score = sum(h.score for h in hits if direction_of(h) == "LONG")
+        short_score = sum(h.score for h in hits if direction_of(h) == "SHORT")
         if long_score == 0 and short_score == 0:
             return []
         direction = "LONG" if long_score >= short_score else "SHORT"
-        keep = [h for h in hits if _direction_of(h) in (direction, None)]
+        keep = [h for h in hits if direction_of(h) in (direction, None)]
         score = sum(h.score for h in keep)
         threshold = self.long_threshold if direction == "LONG" else self.short_threshold
         if score < threshold:

@@ -36,6 +36,12 @@ THRESHOLDS = [(6.0, 4.0), (6.0, 5.0), (6.0, 6.0), (7.0, 5.0), (7.0, 6.0),
 STOP_MULTS = [1.0, 1.5, 2.0, 2.5, 3.0]
 TARGET_MULTS = [2.0, 3.0, 4.0, 5.0, 6.0]
 
+# İşlem maliyetleri (Binance USDT-M Futures varsayılan)
+TAKER_FEE = 0.0004   # 0.04%
+MAKER_FEE = 0.0002   # 0.02%
+SLIPPAGE_BPS = 1     # 1 bps = 0.01% per fill
+ROUND_TRIP_COST_PCT = TAKER_FEE + MAKER_FEE + 2 * SLIPPAGE_BPS / 10000  # ~0.0008 = 0.08%
+
 
 async def fetch(rest: BinanceRest, sym: str, tf: str) -> pd.DataFrame:
     tf_ms = TFS[tf]
@@ -59,6 +65,41 @@ async def fetch(rest: BinanceRest, sym: str, tf: str) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.concat(frames).drop_duplicates("ts").reset_index(drop=True)
     return df[df["ts"] < end - tf_ms]  # son açık mumu at
+
+
+HTF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
+
+
+async def fetch_htf(rest: BinanceRest, sym: str, htf: str,
+                    start_ms: int, end_ms: int) -> pd.DataFrame:
+    """Teyit katmanı için yüksek zaman dilimi mumları (yalnız kapalı mumlar)."""
+    tf_ms = HTF_MS[htf]
+    try:
+        raw = await rest._json("/fapi/v1/klines",
+                               {"symbol": sym, "interval": htf,
+                                "startTime": start_ms - 40 * tf_ms,
+                                "endTime": end_ms, "limit": 500})
+    except Exception as e:
+        print(f"  ! {sym} {htf}: HTF veri alınamadı ({e})")
+        return pd.DataFrame()
+    if not raw:
+        return pd.DataFrame()
+    df = parse_klines(raw, sym, htf)
+    return df[df["ts"] < end_ms - tf_ms]
+
+
+def htf_trend_at(df_htf: pd.DataFrame, df: pd.DataFrame,
+                 length: int, mult: float, htf: str) -> np.ndarray:
+    """df'deki her bar için, o anda KAPALI olan son HTF barının Supertrend yönü."""
+    out = np.zeros(len(df), dtype=int)
+    if df_htf.empty or len(df_htf) < length + 2:
+        return out
+    st = supertrend_series(df_htf, length, mult)
+    close_ts = df_htf["ts"].to_numpy() + HTF_MS[htf]
+    j = np.searchsorted(close_ts, df["ts"].to_numpy(), side="right") - 1
+    ok = j >= 0
+    out[ok] = st[j[ok]]
+    return out
 
 
 def supertrend_series(df: pd.DataFrame, length: int, mult: float) -> np.ndarray:
@@ -191,13 +232,14 @@ def precompute(df: pd.DataFrame, c: dict) -> dict:
 
 
 def walk(df: pd.DataFrame, pre: dict, c: dict,
-         thr: tuple[float, float]) -> list[dict]:
+         thr: tuple[float, float], htf: np.ndarray | None = None) -> list[dict]:
     """Verilen eşiklerle ateşlenen aday sinyaller (cooldown dahil)."""
     out = []
     n = len(df)
     last = {"LONG": -10**9, "SHORT": -10**9}
     v = df["quote_volume"].to_numpy()
     cl = df["close"].to_numpy()
+    use_htf = c.get("use_htf_filter", False) and htf is not None
     for i in range(WARMUP, n):
         if v[i] < c["min_quote_volume_usd"]:
             continue
@@ -205,6 +247,8 @@ def walk(df: pd.DataFrame, pre: dict, c: dict,
         if ls == 0 and ss == 0:
             continue
         direction = "LONG" if ls >= ss else "SHORT"
+        if use_htf and htf[i] != (1 if direction == "LONG" else -1):
+            continue
         score = (ls if direction == "LONG" else ss) + pre["neutral"][i]
         thr_d = thr[0] if direction == "LONG" else thr[1]
         if score < thr_d or i - last[direction] < COOLDOWN_BARS:
@@ -228,14 +272,16 @@ def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
     for j in range(i + 1, min(i + 1 + horizon, len(df))):
         hit_stop = lo[j] <= stop if direction == "LONG" else hi[j] >= stop
         if hit_stop:
-            return "LOSS", -stop_dist / price * 100
+            gross = -stop_dist / price * 100
+            return "LOSS", gross - ROUND_TRIP_COST_PCT * 100
         hit_target = hi[j] >= target if direction == "LONG" else lo[j] <= target
         if hit_target:
-            return "WIN", tgt_dist / price * 100
+            gross = tgt_dist / price * 100
+            return "WIN", gross - ROUND_TRIP_COST_PCT * 100
     end = cl[min(i + horizon, len(df) - 1)]
     sign = 1.0 if direction == "LONG" else -1.0
-    pnl = sign * (end - price) / price * 100
-    return ("WIN" if pnl > 0 else "LOSS"), pnl
+    gross = sign * (end - price) / price * 100
+    return ("WIN" if gross > 0 else "LOSS"), gross - ROUND_TRIP_COST_PCT * 100
 
 
 def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
@@ -261,6 +307,7 @@ def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
 async def main():
     cfg = load_config(Path("config.toml"))
     c = cfg["signals"]
+    htf_tf = c.get("htf_timeframe", "1h")
     async with aiohttp.ClientSession() as session:
         rest = BinanceRest(session)
         data = {}
@@ -269,6 +316,17 @@ async def main():
                 df = await fetch(rest, sym, tf)
                 if len(df) > WARMUP + HORIZON[tf] + 10:
                     data[(sym, tf)] = (df, precompute(df, c))
+        htfs = {}
+        if c.get("use_htf_filter", False):
+            for sym in SYMBOLS:
+                spans = [df["ts"] for (s, t), (df, _) in data.items() if s == sym]
+                if not spans:
+                    continue
+                start_ms = int(min(s.min() for s in spans))
+                end_ms = int(max(s.max() for s in spans)) + TFS["3m"]
+                df_htf = await fetch_htf(rest, sym, htf_tf, start_ms, end_ms)
+                htfs[sym] = df_htf
+                await asyncio.sleep(0.1)
         print(f"{len(data)} seri yüklendi.")
         span = ""
         for (sym, tf), (df, _) in data.items():
@@ -279,11 +337,18 @@ async def main():
         print(span)
 
     # aday sinyalleri eşik bazında bir kez yürüt (simülasyon grid'de tekrarlanır)
+    htf_series = {}
+    if c.get("use_htf_filter", False):
+        for (sym, tf), (df, _) in data.items():
+            df_htf = htfs.get(sym, pd.DataFrame())
+            htf_series[(sym, tf)] = htf_trend_at(
+                df_htf, df, c.get("supertrend_len", 20),
+                c.get("supertrend_mult", 2.0), htf_tf)
     candidates: dict[tuple, list] = {}
     for thr in THRESHOLDS:
         acc = []
         for (sym, tf), (df, pre) in data.items():
-            for s in walk(df, pre, c, thr):
+            for s in walk(df, pre, c, thr, htf_series.get((sym, tf))):
                 acc.append({**s, "sym": sym, "tf": tf})
         candidates[thr] = acc
 

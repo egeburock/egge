@@ -70,3 +70,26 @@ def test_collect_hits_includes_oi_confirmation(agent):
                        "close": [100.5], "quote_volume": [90000.0]})
     rules = [h.rule for h in agent.collect_hits(df, "BTCUSDT")]
     assert "oi_confirm" in rules
+
+
+def test_evaluate_df_htf_filter(agent):
+    import pandas as pd
+    from src.models import RuleHit
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 105, 99, 103, 90000.0)
+    df = pd.DataFrame({"open": [100.0], "high": [105.0], "low": [99.0],
+                       "close": [103.0], "quote_volume": [90000.0]})
+    hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    agent.collect_hits = lambda d, s: list(hits)
+    agent.engine.long_threshold = 4.0
+    agent.cfg["signals"]["use_htf_filter"] = True
+
+    agent.htf_trend["BTCUSDT"] = 1
+    assert agent.evaluate_df(df, bar)
+
+    agent.engine._last.clear()
+    agent.htf_trend["BTCUSDT"] = -1
+    assert not agent.evaluate_df(df, bar)
+
+    agent.engine._last.clear()
+    agent.cfg["signals"]["use_htf_filter"] = False
+    assert agent.evaluate_df(df, bar)

@@ -4,6 +4,7 @@ bölerek out-of-sample performansı ölçer. Overfitting riskini azaltır.
 import asyncio
 import sys
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,6 +24,7 @@ async def main():
     c = cfg["signals"]
     stop_mult = c.get("stop_atr_mult", 2.0)
     target_mult = c.get("target_atr_mult", 2.0)
+    htf_tf = c.get("htf_timeframe", "1h")
 
     async with aiohttp.ClientSession() as session:
         rest = BinanceRest(session)
@@ -32,8 +34,25 @@ async def main():
                 df = await opt.fetch(rest, sym, tf)
                 if len(df) > opt.WARMUP + opt.HORIZON[tf] + 10:
                     data[(sym, tf)] = (df, opt.precompute(df, c))
+        htfs = {}
+        if c.get("use_htf_filter", False):
+            for sym in opt.SYMBOLS:
+                spans = [df["ts"] for (s, t), (df, _) in data.items() if s == sym]
+                if not spans:
+                    continue
+                start_ms = int(min(s.min() for s in spans))
+                end_ms = int(max(s.max() for s in spans)) + opt.TFS["3m"]
+                htfs[sym] = await opt.fetch_htf(rest, sym, htf_tf, start_ms, end_ms)
+                await asyncio.sleep(0.1)
 
     print(f"Toplam {len(data)} seri yüklendi.")
+
+    htf_series = {}
+    if c.get("use_htf_filter", False):
+        for (sym, tf), (df, _) in data.items():
+            htf_series[(sym, tf)] = opt.htf_trend_at(
+                htfs.get(sym, pd.DataFrame()), df, c.get("supertrend_len", 20),
+                c.get("supertrend_mult", 2.0), htf_tf)
 
     n_folds = 4
     all_fold_results = []
@@ -48,6 +67,9 @@ async def main():
             train_df, test_df = df.iloc[:train_end].copy(), df.iloc[train_end:].copy()
             train_pre = {k: v[:train_end] for k, v in pre.items()}
             test_pre = {k: v[train_end:] for k, v in pre.items()}
+            htf_full = htf_series.get((sym, tf))
+            train_htf = htf_full[:train_end] if htf_full is not None else None
+            test_htf = htf_full[train_end:] if htf_full is not None else None
 
             # Train'de en iyi (thr, stop, target) kombinasyonunu bul
             best_pnl = -1e9
@@ -55,7 +77,7 @@ async def main():
             for stop in opt.STOP_MULTS:
                 for target in opt.TARGET_MULTS:
                     for th in opt.THRESHOLDS:
-                        sigs = list(opt.walk(train_df, train_pre, c, th))
+                        sigs = list(opt.walk(train_df, train_pre, c, th, train_htf))
                         if len(sigs) < 5:
                             continue
                         by_series = {}
@@ -76,7 +98,7 @@ async def main():
             (thr_tr, stop_tr, target_tr) = best_cfg
 
             # Test'te en iyi cfg ile simüle et
-            test_sigs = list(opt.walk(test_df, test_pre, c, thr_tr))
+            test_sigs = list(opt.walk(test_df, test_pre, c, thr_tr, test_htf))
             if not test_sigs:
                 continue
             by_series = {}

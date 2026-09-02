@@ -10,7 +10,7 @@ import uvicorn
 from src.bars import bars_to_df
 from src.config import load_config, tf_seconds
 from src.db import Database
-from src.engine import SignalEngine
+from src.engine import SignalEngine, direction_of
 from src.klines import BinanceRest
 from src.models import Bar
 from src.notify import Notifier
@@ -23,6 +23,7 @@ POLL_CONCURRENCY = 10
 SEC_HISTORY = 200
 SYMBOL_REFRESH_S = 3600
 OI_INTERVAL_S = 300
+HTF_INTERVAL_S = 900
 
 
 def setup_logging():
@@ -56,6 +57,7 @@ class Agent:
         self.oi_price_chg: dict[str, float] = {}
         self._prev_oi: dict[str, float] = {}
         self._prev_prices: dict[str, float] = {}
+        self.htf_trend: dict[str, int] = {}
 
     def _apply_symbol_filter(self, symbols: list[str]) -> list[str]:
         if self.cfg["aggressive"]["enabled"]:
@@ -75,6 +77,7 @@ class Agent:
                      asyncio.create_task(self.minute_poller()),
                      asyncio.create_task(self.funding_poller()),
                      asyncio.create_task(self.oi_poller()),
+                     asyncio.create_task(self.htf_poller()),
                      asyncio.create_task(self.symbol_refresher()),
                      asyncio.create_task(tracker.run()),
                      asyncio.create_task(self.serve_dashboard(feed))]
@@ -101,6 +104,11 @@ class Agent:
 
     def evaluate_df(self, df, bar: Bar):
         hits = self.collect_hits(df, bar.symbol)
+        c = self.cfg["signals"]
+        trend = self.htf_trend.get(bar.symbol)
+        if c.get("use_htf_filter", False) and trend in (1, -1):
+            want = "LONG" if trend == 1 else "SHORT"
+            hits = [h for h in hits if direction_of(h) in (want, None)]
         atr = rules.atr_value(df)
         return self.engine.evaluate(bar, hits, atr)
 
@@ -210,6 +218,31 @@ class Agent:
                 log.info("Sembol listesi yenilendi: %d sembol", len(self.symbols))
             except Exception as e:
                 log.warning("sembol listesi yenilenemedi: %s", e)
+
+    async def htf_poller(self):
+        """Yüksek zaman dilimi Supertrend onayı (teyit katmanı)."""
+        c = self.cfg["signals"]
+        if not c.get("use_htf_filter", False):
+            return
+        tf = c.get("htf_timeframe", "1h")
+        sem = asyncio.Semaphore(POLL_CONCURRENCY)
+        while True:
+            async def fetch_trend(sym: str):
+                async with sem:
+                    df = await self.rest.klines(sym, tf, limit=100)
+                if df is None or len(df) < 25:
+                    return
+                trend, _ = rules.supertrend(df, c.get("supertrend_len", 20),
+                                            c.get("supertrend_mult", 2.0))
+                self.htf_trend[sym] = trend
+
+            try:
+                await asyncio.gather(*(fetch_trend(s) for s in self.symbols),
+                                     return_exceptions=True)
+                log.info("HTF trend (%s) güncellendi: %d sembol", tf, len(self.htf_trend))
+            except Exception as e:
+                log.warning("HTF trend güncellenemedi: %s", e)
+            await asyncio.sleep(HTF_INTERVAL_S)
 
     async def serve_dashboard(self, feed):
         app = create_app(self.db, lambda: {"symbols": len(self.symbols),
