@@ -240,8 +240,11 @@ def walk(df: pd.DataFrame, pre: dict, c: dict,
     v = df["quote_volume"].to_numpy()
     cl = df["close"].to_numpy()
     use_htf = c.get("use_htf_filter", False) and htf is not None
+    min_atr_pct = c.get("min_atr_pct", 0.0)
     for i in range(WARMUP, n):
         if v[i] < c["min_quote_volume_usd"]:
+            continue
+        if min_atr_pct > 0 and cl[i] > 0 and pre["atr"][i] / cl[i] * 100 < min_atr_pct:
             continue
         ls, ss = pre["long"][i], pre["short"][i]
         if ls == 0 and ss == 0:

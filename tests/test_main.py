@@ -82,6 +82,7 @@ def test_evaluate_df_htf_filter(agent):
     agent.collect_hits = lambda d, s: list(hits)
     agent.engine.long_threshold = 4.0
     agent.cfg["signals"]["use_htf_filter"] = True
+    agent.cfg["signals"]["min_atr_pct"] = 0.0
 
     agent.htf_trend["BTCUSDT"] = 1
     assert agent.evaluate_df(df, bar)
@@ -92,4 +93,18 @@ def test_evaluate_df_htf_filter(agent):
 
     agent.engine._last.clear()
     agent.cfg["signals"]["use_htf_filter"] = False
+    assert agent.evaluate_df(df, bar)
+
+
+def test_evaluate_df_min_atr_pct_blocks_flat(agent):
+    import pandas as pd
+    from src.models import RuleHit
+    bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 101, 99, 100.5, 90000.0)
+    df = pd.DataFrame({"open": [100.0], "high": [101.0], "low": [99.0],
+                       "close": [100.5], "quote_volume": [90000.0]})
+    agent.collect_hits = lambda d, s: [RuleHit("ema_cross", "LONG: x", 5.0)]
+    agent.engine.long_threshold = 5.0
+    agent.cfg["signals"]["min_atr_pct"] = 10.0
+    assert not agent.evaluate_df(df, bar)
+    agent.cfg["signals"]["min_atr_pct"] = 0.0
     assert agent.evaluate_df(df, bar)

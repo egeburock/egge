@@ -103,13 +103,16 @@ class Agent:
         return bars_to_df(hist)
 
     def evaluate_df(self, df, bar: Bar):
-        hits = self.collect_hits(df, bar.symbol)
         c = self.cfg["signals"]
+        atr = rules.atr_value(df)
+        min_atr_pct = c.get("min_atr_pct", 0.0)
+        if min_atr_pct > 0 and (atr is None or atr / bar.close * 100 < min_atr_pct):
+            return []
+        hits = self.collect_hits(df, bar.symbol)
         trend = self.htf_trend.get(bar.symbol)
         if c.get("use_htf_filter", False) and trend in (1, -1):
             want = "LONG" if trend == 1 else "SHORT"
             hits = [h for h in hits if direction_of(h) in (want, None)]
-        atr = rules.atr_value(df)
         return self.engine.evaluate(bar, hits, atr)
 
     async def bar_history(self, symbol: str, tf: str):

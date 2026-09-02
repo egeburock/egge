@@ -43,6 +43,7 @@ use_ob_retest = true
 ob_pivot_len = 5
 use_htf_filter = true
 htf_timeframe = "1h"
+min_atr_pct = 0.0
 
 [tracking]
 horizon_minutes = 30
