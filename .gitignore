@@ -5,3 +5,4 @@ logs/
 .env
 *.egg-info/
 optimize_out.txt
+.data_cache/

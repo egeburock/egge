@@ -39,6 +39,8 @@ geçerse sinyal üretilir:
   fiyat sıçraması (≥%2)
 - **Pozisyon verisi:** funding kalabalığı/ekstremi, OI + fiyat teyidi,
   Supertrend, Order Block retesti
+- **Teyit katmanı:** sinyaller 1h Supertrend yönüyle uyuşmak zorunda
+  (`use_htf_filter`, `htf_timeframe` ayarlanabilir)
 - Sembol+yön+dilim bazında cooldown; sadece kapanmış barlar.
 
 ## Kurulum ve çalıştırma
@@ -68,7 +70,14 @@ python -m pytest tests -q
 ```bash
 python scripts/backtest.py      # geçmiş veride canlı kural setinin başarı oranı
 python scripts/optimize_rr.py   # stop/hedef/eşik grid araması
+python scripts/walk_forward.py  # out-of-sample validasyon (train/test fold'ları)
 ```
+
+- Backtest komisyon + slippage içerir (~%0.08 round-trip; `optimize_rr.py`
+  başındaki sabitlerden ayarlanır).
+- Veri `.data_cache/` altında 6 saat cache'lenir; taze veri için klasörü silin.
+- In-sample sonuçlara güvenmeyin: `walk_forward.py` out-of-sample koşusu
+  olmadan hiçbir ayar değişikliğini kabul etmeyin.
 
 ## Uyarı
 

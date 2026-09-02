@@ -79,6 +79,7 @@ class Agent:
                      asyncio.create_task(self.oi_poller()),
                      asyncio.create_task(self.htf_poller()),
                      asyncio.create_task(self.symbol_refresher()),
+                     asyncio.create_task(self.notifier.flush_loop()),
                      asyncio.create_task(tracker.run()),
                      asyncio.create_task(self.serve_dashboard(feed))]
             await asyncio.gather(*tasks)

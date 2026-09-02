@@ -7,6 +7,7 @@ Funding/OI geçmişte olmadığı için devre dışı (canlıda da OI None).
 import asyncio
 import math
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,7 +44,28 @@ SLIPPAGE_BPS = 1     # 1 bps = 0.01% per fill
 ROUND_TRIP_COST_PCT = TAKER_FEE + MAKER_FEE + 2 * SLIPPAGE_BPS / 10000  # ~0.0008 = 0.08%
 
 
+CACHE_DIR = Path(__file__).resolve().parents[1] / ".data_cache"
+CACHE_TTL_H = 6
+
+
+def _cache_get(sym: str, tf: str) -> pd.DataFrame | None:
+    f = CACHE_DIR / f"{sym}_{tf}.csv"
+    if f.exists() and time.time() - f.stat().st_mtime < CACHE_TTL_H * 3600:
+        df = pd.read_csv(f)
+        df.attrs["symbol"], df.attrs["timeframe"] = sym, tf
+        return df
+    return None
+
+
+def _cache_put(sym: str, tf: str, df: pd.DataFrame):
+    CACHE_DIR.mkdir(exist_ok=True)
+    df.to_csv(CACHE_DIR / f"{sym}_{tf}.csv", index=False)
+
+
 async def fetch(rest: BinanceRest, sym: str, tf: str) -> pd.DataFrame:
+    cached = _cache_get(sym, tf)
+    if cached is not None:
+        return cached
     tf_ms = TFS[tf]
     end = int(datetime.now(timezone.utc).timestamp() * 1000)
     start = end - BARS * tf_ms
@@ -64,7 +86,9 @@ async def fetch(rest: BinanceRest, sym: str, tf: str) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     df = pd.concat(frames).drop_duplicates("ts").reset_index(drop=True)
-    return df[df["ts"] < end - tf_ms]  # son açık mumu at
+    df = df[df["ts"] < end - tf_ms]  # son açık mumu at
+    _cache_put(sym, tf, df)
+    return df
 
 
 HTF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
@@ -73,6 +97,9 @@ HTF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
 async def fetch_htf(rest: BinanceRest, sym: str, htf: str,
                     start_ms: int, end_ms: int) -> pd.DataFrame:
     """Teyit katmanı için yüksek zaman dilimi mumları (yalnız kapalı mumlar)."""
+    cached = _cache_get(sym, f"{htf}_htf")
+    if cached is not None:
+        return cached
     tf_ms = HTF_MS[htf]
     try:
         raw = await rest._json("/fapi/v1/klines",
@@ -85,7 +112,9 @@ async def fetch_htf(rest: BinanceRest, sym: str, htf: str,
     if not raw:
         return pd.DataFrame()
     df = parse_klines(raw, sym, htf)
-    return df[df["ts"] < end_ms - tf_ms]
+    df = df[df["ts"] < end_ms - tf_ms]
+    _cache_put(sym, f"{htf}_htf", df)
+    return df
 
 
 def htf_trend_at(df_htf: pd.DataFrame, df: pd.DataFrame,
@@ -266,15 +295,23 @@ def walk(df: pd.DataFrame, pre: dict, c: dict,
 
 
 def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
-             stop_dist: float, tgt_dist: float, horizon: int) -> tuple[str, float]:
+             stop_dist: float, tgt_dist: float, horizon: int,
+             be_r: float = 0.0) -> tuple[str, float]:
+    """be_r > 0 ise fiyat +be_r*R'ye ulaştığında stop girişe çekilir (breakeven)."""
     hi, lo, cl = df["high"].to_numpy(), df["low"].to_numpy(), df["close"].to_numpy()
-    if direction == "LONG":
-        stop, target = price - stop_dist, price + tgt_dist
-    else:
-        stop, target = price + stop_dist, price - tgt_dist
+    sign = 1.0 if direction == "LONG" else -1.0
+    stop = price - sign * stop_dist
+    target = price + sign * tgt_dist
+    be_trigger = price + sign * (be_r * stop_dist) if be_r > 0 else None
+    armed = False
     for j in range(i + 1, min(i + 1 + horizon, len(df))):
-        hit_stop = lo[j] <= stop if direction == "LONG" else hi[j] >= stop
+        if be_trigger is not None and not armed:
+            armed = hi[j] >= be_trigger if direction == "LONG" else lo[j] <= be_trigger
+        eff_stop = price if armed else stop
+        hit_stop = lo[j] <= eff_stop if direction == "LONG" else hi[j] >= eff_stop
         if hit_stop:
+            if armed:
+                return "BE", -ROUND_TRIP_COST_PCT * 100
             gross = -stop_dist / price * 100
             return "LOSS", gross - ROUND_TRIP_COST_PCT * 100
         hit_target = hi[j] >= target if direction == "LONG" else lo[j] <= target
@@ -282,19 +319,18 @@ def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
             gross = tgt_dist / price * 100
             return "WIN", gross - ROUND_TRIP_COST_PCT * 100
     end = cl[min(i + horizon, len(df) - 1)]
-    sign = 1.0 if direction == "LONG" else -1.0
     gross = sign * (end - price) / price * 100
     return ("WIN" if gross > 0 else "LOSS"), gross - ROUND_TRIP_COST_PCT * 100
 
 
 def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
-             stop_mult: float, target_mult: float) -> dict:
+             stop_mult: float, target_mult: float, be_r: float = 0.0) -> dict:
     horizon = HORIZON[tf]
     results = []
     for s in sigs:
         stop_dist, tgt_dist = stop_mult * s["atr"], target_mult * s["atr"]
         result, pnl = simulate(df, s["i"], s["dir"], s["price"],
-                               stop_dist, tgt_dist, horizon)
+                               stop_dist, tgt_dist, horizon, be_r)
         results.append({**s, "result": result, "pnl": pnl,
                         "r": pnl / (stop_dist / s["price"] * 100)})
     if not results:

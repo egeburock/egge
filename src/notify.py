@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from src.models import Signal
@@ -47,3 +48,14 @@ class Notifier:
             except Exception as e:
                 log.warning("Telegram gönderilemedi: %s", e)
                 break
+
+    async def flush_loop(self):
+        """Kuyruğu periyodik boşaltır; hata sonrası mesajlar birikmesin."""
+        while True:
+            await asyncio.sleep(30)
+            if self.dry_run or not self.token:
+                continue
+            try:
+                await self._flush()
+            except Exception as e:
+                log.warning("Telegram kuyruk gönderilemedi: %s", e)
