@@ -22,7 +22,6 @@ class SignalEngine:
         self._last: dict[tuple[str, str, str], int] = {}
 
     def evaluate(self, bar: Bar, hits: list[RuleHit],
-                 funding_rate: float | None, oi_pct: float | None,
                  atr: float | None = None) -> list[Signal]:
         if bar.quote_volume < self.min_quote_volume:
             return []

@@ -52,3 +52,21 @@ async def test_on_bar_closed_emits_signal_on_spike(agent):
     await agent.on_bar_closed(spike)
     rows = agent.db.recent_signals(limit=10)
     assert rows and rows[0]["direction"] == "LONG"
+
+
+def test_oi_snapshot_diffs(agent):
+    agent._apply_oi_snapshot({"BTCUSDT": 100.0}, {"BTCUSDT": 50.0})
+    assert agent.oi_chg == {} and agent.oi_price_chg == {}
+    agent._apply_oi_snapshot({"BTCUSDT": 103.0}, {"BTCUSDT": 50.5})
+    assert abs(agent.oi_chg["BTCUSDT"] - 3.0) < 1e-9
+    assert abs(agent.oi_price_chg["BTCUSDT"] - 1.0) < 1e-9
+
+
+def test_collect_hits_includes_oi_confirmation(agent):
+    agent._apply_oi_snapshot({"BTCUSDT": 100.0}, {"BTCUSDT": 100.0})
+    agent._apply_oi_snapshot({"BTCUSDT": 102.0}, {"BTCUSDT": 101.0})
+    import pandas as pd
+    df = pd.DataFrame({"open": [100.0], "high": [101.0], "low": [99.0],
+                       "close": [100.5], "quote_volume": [90000.0]})
+    rules = [h.rule for h in agent.collect_hits(df, "BTCUSDT")]
+    assert "oi_confirm" in rules

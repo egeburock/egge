@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import logging.handlers
 from collections import deque
 from pathlib import Path
 
@@ -18,8 +19,22 @@ from src.tracker import OutcomeTracker
 from src.web import create_app
 from src.ws_feed import WsFeed
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(name)s %(message)s")
+POLL_CONCURRENCY = 10
+SEC_HISTORY = 200
+SYMBOL_REFRESH_S = 3600
+OI_INTERVAL_S = 300
+
+
+def setup_logging():
+    Path("logs").mkdir(exist_ok=True)
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        Path("logs") / "agent.log", when="midnight", backupCount=7, encoding="utf-8")
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+                        handlers=[logging.StreamHandler(), file_handler])
+
+
+setup_logging()
 log = logging.getLogger("main")
 
 POLL_CONCURRENCY = 10
@@ -37,14 +52,20 @@ class Agent:
         self.rest = BinanceRest(None)
         self.funding: dict[str, float | None] = {}
         self.sec_history: dict[tuple[str, str], deque] = {}
+        self.oi_chg: dict[str, float] = {}
+        self.oi_price_chg: dict[str, float] = {}
+        self._prev_oi: dict[str, float] = {}
+        self._prev_prices: dict[str, float] = {}
+
+    def _apply_symbol_filter(self, symbols: list[str]) -> list[str]:
+        if self.cfg["aggressive"]["enabled"]:
+            return [s for s in symbols if s in self.cfg["aggressive"]["symbols"]]
+        return symbols
 
     async def start(self):
         async with aiohttp.ClientSession() as session:
             self.rest.session = session
-            self.symbols = await self.rest.exchange_info()
-            if self.cfg["aggressive"]["enabled"]:
-                self.symbols = [s for s in self.symbols
-                                if s in self.cfg["aggressive"]["symbols"]]
+            self.symbols = self._apply_symbol_filter(await self.rest.exchange_info())
             log.info("Taranacak sembol: %d", len(self.symbols))
             sec_tfs = [t for t in self.cfg["timeframes"]["enabled"] if t.endswith("s")]
             feed = WsFeed(self.symbols, sec_tfs,
@@ -53,6 +74,8 @@ class Agent:
             tasks = [asyncio.create_task(feed.run()),
                      asyncio.create_task(self.minute_poller()),
                      asyncio.create_task(self.funding_poller()),
+                     asyncio.create_task(self.oi_poller()),
+                     asyncio.create_task(self.symbol_refresher()),
                      asyncio.create_task(tracker.run()),
                      asyncio.create_task(self.serve_dashboard(feed))]
             await asyncio.gather(*tasks)
@@ -79,7 +102,7 @@ class Agent:
     def evaluate_df(self, df, bar: Bar):
         hits = self.collect_hits(df, bar.symbol)
         atr = rules.atr_value(df)
-        return self.engine.evaluate(bar, hits, self.funding.get(bar.symbol), None, atr)
+        return self.engine.evaluate(bar, hits, atr)
 
     async def bar_history(self, symbol: str, tf: str):
         if tf.endswith("s"):
@@ -115,6 +138,10 @@ class Agent:
             hits = [h for h in hits if h.rule not in ("ema_cross", "macd_cross")]
         hits += rules.funding_rule(self.funding.get(symbol),
                                    c["funding_crowded"], c["funding_extreme_neg"])
+        oi_pct = self.oi_chg.get(symbol)
+        px_chg = self.oi_price_chg.get(symbol)
+        if oi_pct is not None and px_chg is not None:
+            hits += rules.oi_rule(oi_pct, px_chg)
         return hits
 
     async def minute_poller(self):
@@ -146,6 +173,43 @@ class Agent:
             except Exception as e:
                 log.warning("funding oranları alınamadı: %s", e)
             await asyncio.sleep(60)
+
+    def _apply_oi_snapshot(self, oi: dict[str, float], prices: dict[str, float]):
+        self.oi_chg = {s: (v - self._prev_oi[s]) / self._prev_oi[s] * 100
+                       for s, v in oi.items()
+                       if self._prev_oi.get(s, 0) > 0}
+        self.oi_price_chg = {s: (p - self._prev_prices[s]) / self._prev_prices[s] * 100
+                             for s, p in prices.items()
+                             if self._prev_prices.get(s, 0) > 0}
+        self._prev_oi, self._prev_prices = oi, prices
+
+    async def oi_poller(self):
+        sem = asyncio.Semaphore(POLL_CONCURRENCY)
+        while True:
+            try:
+                oi: dict[str, float] = {}
+                prices = await self.rest.all_prices()
+
+                async def fetch_oi(sym: str):
+                    async with sem:
+                        oi[sym] = await self.rest.open_interest(sym)
+
+                await asyncio.gather(*(fetch_oi(s) for s in self.symbols),
+                                     return_exceptions=True)
+                self._apply_oi_snapshot(oi, prices)
+                log.info("OI anlık görüntüsü: %d sembol", len(oi))
+            except Exception as e:
+                log.warning("OI güncellenemedi: %s", e)
+            await asyncio.sleep(OI_INTERVAL_S)
+
+    async def symbol_refresher(self):
+        while True:
+            await asyncio.sleep(SYMBOL_REFRESH_S)
+            try:
+                self.symbols = self._apply_symbol_filter(await self.rest.exchange_info())
+                log.info("Sembol listesi yenilendi: %d sembol", len(self.symbols))
+            except Exception as e:
+                log.warning("sembol listesi yenilenemedi: %s", e)
 
     async def serve_dashboard(self, feed):
         app = create_app(self.db, lambda: {"symbols": len(self.symbols),

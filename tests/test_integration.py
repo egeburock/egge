@@ -27,5 +27,5 @@ def test_engine_end_to_end_with_synthetic_spike():
     bar = Bar("BTCUSDT", "5s", 0, 5000, 100, 110, 99, 109, 1000.0)
     hits = [RuleHit("price_jump", "LONG: bar içi +9.0%", 2.0),
             RuleHit("volume_spike", "Hacim 4x", 2.0)]
-    sigs = eng.evaluate(bar, hits, None, None)
+    sigs = eng.evaluate(bar, hits, None)
     assert sigs and sigs[0].direction == "LONG" and sigs[0].score == 4.0
