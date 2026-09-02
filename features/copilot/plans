@@ -1,0 +1,89 @@
+# Copilot: Özellik Planları ve Kalibrasyon Rehberi
+## Amaç
+Copilot önerilerinin doğruluğunu, güvenliğini ve performansını artırmak; kullanıcı memnuniyetini sürdürülebilir şekilde iyileştirmek.
+
+## Kapsam
+- Özellikler: context-aware tamamlama, güvenlik filtreleri, stil rehberi uyumu, multi-file öneriler
+- Platformlar: VSCode, Web IDE, CLI eklentileri
+- Hedef sürüm: v1.3 (v1.2 -> v1.3 arası kalibrasyon)
+
+## Başarı Metrikleri (KPI)
+- Precision@1 (öneri ilk sonucu doğruluk): >= 85%
+- Recall (kritik önerilerde): >= 75%
+- F1 (genel denge): hedef >= 0.80
+- Latency: p99 <= 200 ms
+- Kullanıcı memnuniyeti (anket/NPS): >= 4/5
+- Güvenlik: riskli öneri oranı < 0.5%
+
+## Kalibrasyon Stratejisi
+1. Veri & Test Setleri
+   - Değerlendirme kümesi: 10k açık kaynak senaryo + 1k edge-case (refactor, bugfix, implementasyon)
+   - "Altın standart" el ile etiketlenmiş 500 örnek
+2. Ölçümler
+   - Precision@1, Recall@5, F1, latency(p50/p95/p99), fallback oranı
+3. Parametre alanı (tuning)
+   - Confidence threshold: 0.05 → 0.5 (adımlarla tarama)
+   - Sampling temperature: 0.0, 0.2, 0.5, 0.8
+   - Beam / n_candidates: 1, 3, 5
+   - Risk score cutoff: >= 0.7 => blok veya kısıtlı gösterim
+4. Grid / Bayesian tuning
+   - Önce grid küçük alan, sonra Bayesian optimization (başarıyla işleyen bölgelerde ince ayar)
+5. Kalibrasyon metriği hedefi
+   - Her iterasyonda Precision@1 +2 puan veya latency p99 değişimi < +10% şartı
+
+## Deney (Experiment) Planı
+- A/B testi senaryosu:
+  - Kontrol: mevcut model (A)
+  - Deney: kalibre edilmiş model (B)
+  - Trafik bölüşümü: 90% kontrol / 10% B ilk etap; kabul kriteri sağlanırsa 50/50, sonra yükselt
+  - Minimum deneme: 2 hafta ve/veya 50k etkileşim
+  - Başarı ölçümü: KPI'larda istatistiksel anlamlı iyileşme (p < 0.05)
+
+## Test & Doğrulama
+- Otomatik:
+  - Unit: öneri pipeline bileşenleri
+  - Integration: IDE + backend entegrasyon testleri
+  - E2E: 3 tip kullanıcı senaryosu (implementasyon, refactor, bugfix)
+- Manuel:
+  - Her sürümde rastgele %1 örnek manuel inceleme
+  - Güvenlik senaryoları için prompt-injection testleri
+- Güvenlik taramaları:
+  - semgrep/Snyk + özel prompt-injection suite
+
+## Yayın & Rollout
+- Canary aşamaları:
+  - internal -> 5% beta -> 25% -> full rollout (adım adım izleme)
+- Geri alma (rollback) kriterleri:
+  - Latency p99 artışı > 30%
+  - Error rate > 1% artış
+  - Kullanıcı şikayetlerinde %3’ten fazla artış
+  - Kritik güvenlik ihlali tespiti
+
+## İzleme & Alarm
+- Dashboard metrikleri:
+  - Precision@1, Recall@5, Latency p50/p95/p99, Error rate, Usage by region
+- Kritik alarmlar:
+  - Error rate > 1% (critical)
+  - Latency p99 > 500ms
+  - Riskli öneri oranında ani artış (örneğin günlük %50 artış)
+
+## Riskler ve Hafifletme
+- Yanlış/zararlı öneri riski: stricter threshold + ikinci doğrulama aşaması
+- Performans bozulması: caching, batching, model distillation
+- Veri gizliliği: özel veri için on-prem veya maskelenmiş pipeline
+
+## CI/CD & PR Rehberi
+- Her değişiklik için:
+  - Test planı ve metrik beklentileri PR açıklamasına eklenmeli
+  - Commit mesaj formatı: feat(copilot/plans): <kısa açıklama>
+- Review checklist:
+  - KPI’ler tanımlı mı?
+  - Testler eklendi mi?
+  - Rollout stratejisi belirlendi mi?
+
+## Sorumlular & İrtibat
+- Sorumlu: @team-lead
+- İzleme / dashboard: monitoring@company.example
+- Sürüm geçmişi:
+  - v1.2 — Baseline öneri motoru
+  - v1.3 — Bu belgeyle planlanan kalibrasyon ve güvenlik iyileştirmeleri
