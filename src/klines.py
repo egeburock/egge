@@ -40,8 +40,14 @@ class BinanceRest:
         raise RuntimeError(f"{path} için denemeler tükendi")
 
     async def klines(self, symbol: str, interval: str, limit: int = 200) -> pd.DataFrame:
-        raw = await self._json("/fapi/v1/klines",
-                               {"symbol": symbol, "interval": interval, "limit": limit})
+        try:
+            raw = await self._json("/fapi/v1/klines",
+                                   {"symbol": symbol, "interval": interval, "limit": limit})
+        except RuntimeError as e:
+            if "400" in str(e):
+                log.warning("%s %s: sembol muhtemelen delisted/bozuk, atlanıyor", symbol, interval)
+                return pd.DataFrame()
+            raise
         return parse_klines(raw[:-1], symbol, interval)  # son mum açık -> atla
 
     async def premium_index(self, symbol: str) -> float | None:
