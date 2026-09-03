@@ -24,6 +24,7 @@ def parse_klines(raw: list, symbol: str, interval: str) -> pd.DataFrame:
 class BinanceRest:
     def __init__(self, session: aiohttp.ClientSession | None):
         self.session = session
+        self.used_weight = 0
 
     async def _get(self, url: str, params: dict | None = None):
         return await self.session.get(url, params=params)
@@ -32,6 +33,11 @@ class BinanceRest:
         for i in range(retries):
             r = await self._get(BASE + path, params)
             try:
+                w = r.headers.get("x-mbx-used-weight-1m")
+                if w:
+                    self.used_weight = int(w)
+                if self.used_weight > 2000:
+                    await asyncio.sleep(10)
                 if r.status == 429:
                     await asyncio.sleep(2 ** i)
                     continue

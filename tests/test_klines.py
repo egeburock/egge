@@ -25,6 +25,7 @@ async def test_rate_limit_and_retry():
 
         class R:
             status = 429 if calls["n"] == 1 else 200
+            headers = {}
 
             def raise_for_status(self):
                 pass

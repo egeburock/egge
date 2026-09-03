@@ -224,6 +224,7 @@ class Agent:
         self._prev_oi, self._prev_prices = oi, prices
 
     async def oi_poller(self):
+        await asyncio.sleep(30)  # startup'ta kline yüküyle çakışmasın
         sem = asyncio.Semaphore(POLL_CONCURRENCY)
         while True:
             try:
@@ -257,6 +258,7 @@ class Agent:
         if not c.get("use_htf_filter", False):
             return
         tf = c.get("htf_timeframe", "1h")
+        await asyncio.sleep(60)  # startup yükünü yay
         sem = asyncio.Semaphore(POLL_CONCURRENCY)
         while True:
             async def fetch_trend(sym: str):
