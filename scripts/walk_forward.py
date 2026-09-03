@@ -180,6 +180,13 @@ async def main():
         for res_k, g in sorted(by_res.items(), key=lambda kv: -len(kv[1])):
             print(f"    {res_k:8s}: {len(g):4d} | ort pnl {np.mean([x['pnl'] for x in g]):+.3f}% "
                   f"| toplam katkı {sum(x['pnl'] for x in g):+.2f}%")
+        by_sym: dict[str, list] = {}
+        for x in all_fold_results:
+            by_sym.setdefault(x["sym"], []).append(x)
+        print("  Sembol bazında (toplam pnl'e göre):")
+        for sym, g in sorted(by_sym.items(),
+                             key=lambda kv: -sum(x["pnl"] for x in kv[1])):
+            print(f"    {sym:9s}: {len(g):3d} | pnl {sum(x['pnl'] for x in g):+.2f}%")
 
     print("\nNot: walk-forward sonuçları in-sample grid'e kıyasla daha gerçekçidir.")
 

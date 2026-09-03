@@ -65,6 +65,12 @@ mesajlar kuyruğa yazılır. Canlıya geçiş: `dry_run = false` + bot token/cha
 python -m pytest tests -q
 ```
 
+## Kalibrasyon
+
+Parametre/kural değişiklikleri için ölçüm kapıları, rollback kriterleri ve
+reddedilen hipotezlerin kaydı: [CALIBRATION.md](CALIBRATION.md). Deney aracı:
+`scripts/walk_forward.py` (out-of-sample, maliyet dahil).
+
 ## Scripts
 
 ```bash
