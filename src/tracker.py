@@ -24,18 +24,43 @@ class OutcomeTracker:
     async def check_once(self, now_ms: int | None = None):
         now = now_ms if now_ms is not None else int(time.time() * 1000)
         rows = self.db.open_signals()
-        if not rows:
+        pending = self.db.pending_orders()
+        if not rows and not pending:
             return
         try:
             prices = await self.rest.all_prices()
         except Exception as e:
             log.warning("fiyatlar alınamadı: %s", e)
             return
-        for row in rows:
+        for row in pending:
+            price = prices.get(row["symbol"])
+            if price is None:
+                continue
+            self.check_fill(row, price, now)
+        for row in self.db.open_signals():
             price = prices.get(row["symbol"])
             if price is None:
                 continue
             self.resolve(row, price, now)
+
+    def check_fill(self, row: dict, price: float, now_ms: int):
+        """Limit emir dolumu; dolumda stop/hedef giriş fiyatına göre yeniden hizalanır."""
+        lim = row["entry_limit"]
+        d = row["direction"]
+        filled = price <= lim if d == "LONG" else price >= lim
+        if filled:
+            risk = row["price"] - row["stop"] if d == "LONG" else row["stop"] - row["price"]
+            tgt_off = (row["target"] - row["price"] if d == "LONG"
+                       else row["price"] - row["target"])
+            new_stop = lim - risk if d == "LONG" else lim + risk
+            new_tgt = lim + tgt_off if d == "LONG" else lim - tgt_off
+            self.db.activate_order(row["id"], lim, new_stop, new_tgt)
+            log.info("limit doldu #%d %s %s @ %.6g", row["id"], row["symbol"],
+                     d, lim)
+            return
+        if row["entry_deadline"] is not None and now_ms >= row["entry_deadline"]:
+            self.db.close_signal(row["id"], "MISSED", price, now_ms, None)
+            log.info("limit dolmadı #%d %s — iptal", row["id"], row["symbol"])
 
     def resolve(self, row: dict, price: float, now_ms: int):
         entry, stop, target = row["price"], row["stop"], row["target"]

@@ -25,7 +25,9 @@ class Database:
                          ("status", "status TEXT NOT NULL DEFAULT 'OPEN'"),
                          ("exit_price", "exit_price REAL"),
                          ("closed_ts", "closed_ts INTEGER"),
-                         ("result_r", "result_r REAL")):
+                         ("result_r", "result_r REAL"),
+                         ("entry_limit", "entry_limit REAL"),
+                         ("entry_deadline", "entry_deadline INTEGER")):
             try:
                 self.conn.execute(f"ALTER TABLE signals ADD COLUMN {ddl}")
             except sqlite3.OperationalError as e:
@@ -34,17 +36,32 @@ class Database:
 
     def save_signal(self, s: Signal):
         hits = [{"rule": h.rule, "detail": h.detail, "score": h.score} for h in s.hits]
+        status = "PENDING" if s.entry_limit is not None else "OPEN"
         self.conn.execute(
             "INSERT INTO signals (ts, symbol, timeframe, direction, strong, score, price,"
-            " stop, target, hits_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " stop, target, hits_json, status, entry_limit, entry_deadline)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (s.ts, s.symbol, s.timeframe, s.direction, int(s.strong), s.score,
-             s.price, s.stop, s.target, json.dumps(hits, ensure_ascii=False)))
+             s.price, s.stop, s.target, json.dumps(hits, ensure_ascii=False),
+             status, s.entry_limit, s.entry_deadline))
         self.conn.commit()
 
     def open_signals(self) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM signals WHERE status = 'OPEN' ORDER BY id").fetchall()
         return [dict(r) for r in rows]
+
+    def pending_orders(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM signals WHERE status = 'PENDING' ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def activate_order(self, sig_id: int, entry_price: float,
+                       stop: float, target: float):
+        self.conn.execute(
+            "UPDATE signals SET status = 'OPEN', price = ?, stop = ?, target = ?"
+            " WHERE id = ?", (entry_price, stop, target, sig_id))
+        self.conn.commit()
 
     def close_signal(self, sig_id: int, status: str, exit_price: float,
                      closed_ts: int, result_r: float | None):

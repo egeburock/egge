@@ -78,3 +78,36 @@ def test_no_stop_stays_open_until_horizon(tmp_path):
     asyncio.run(t.check_once(now_ms=NOW + 31 * 60_000))
     r = closed_row(db)
     assert r["status"] == "EXPIRED" and r["result_r"] is None
+
+
+def limit_signal(ts=NOW):
+    # fiyat 100, limit 99, stop 97, hedef 105 (stop/hedef sinyal kapanışına göre)
+    return Signal("BTCUSDT", "1m", "LONG", False, 6.0, 100.0, 97.0, 105.0, ts,
+                  HITS, entry_limit=99.0, entry_deadline=ts + 8 * 60_000)
+
+
+def test_pending_fills_and_realigns(tmp_path):
+    db = open_db(tmp_path, limit_signal())
+    t = OutcomeTracker(db, FakeRest(98.5), CFG)
+    asyncio.run(t.check_once(now_ms=NOW + 60_000))
+    r = closed_row(db)
+    assert r["status"] == "OPEN" and r["price"] == 99.0
+    assert r["stop"] == 96.0 and r["target"] == 104.0  # risk/hedef girişe göre kaydırıldı
+
+
+def test_pending_unfilled_expires_as_missed(tmp_path):
+    db = open_db(tmp_path, limit_signal())
+    t = OutcomeTracker(db, FakeRest(100.5), CFG)
+    asyncio.run(t.check_once(now_ms=NOW + 8 * 60_000 + 1))
+    r = closed_row(db)
+    assert r["status"] == "MISSED" and r["result_r"] is None
+
+
+def test_filled_trade_then_target(tmp_path):
+    db = open_db(tmp_path, limit_signal())
+    t = OutcomeTracker(db, FakeRest(98.5), CFG)
+    asyncio.run(t.check_once(now_ms=NOW + 60_000))
+    t2 = OutcomeTracker(db, FakeRest(104.0), CFG)
+    asyncio.run(t2.check_once(now_ms=NOW + 120_000))
+    r = closed_row(db)
+    assert r["status"] == "TARGET" and r["exit_price"] == 104.0

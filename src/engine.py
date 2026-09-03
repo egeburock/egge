@@ -1,3 +1,4 @@
+from src.config import tf_seconds
 from src.models import Bar, RuleHit, Signal
 
 
@@ -19,6 +20,8 @@ class SignalEngine:
         self.stop_atr_mult = sig.get("stop_atr_mult", 1.5)
         self.target_atr_mult = sig.get("target_atr_mult", 3.0)
         self.cooldowns: dict[str, int] = dict(cfg["timeframes"]["cooldown_s"])
+        self.entry_off_r = sig.get("entry_off_r", 0.0)
+        self.entry_window_bars = sig.get("entry_window_bars", 8)
         self._last: dict[tuple[str, str, str], int] = {}
 
     def evaluate(self, bar: Bar, hits: list[RuleHit],
@@ -42,12 +45,21 @@ class SignalEngine:
             return []
         self._last[key] = bar.close_ts
         stop = target = None
+        entry_limit = None
+        entry_deadline = None
         if atr is not None and atr > 0:
             stop_dist = self.stop_atr_mult * atr
             stop = bar.close - stop_dist if direction == "LONG" else bar.close + stop_dist
             tgt_dist = self.target_atr_mult * atr
             target = bar.close + tgt_dist if direction == "LONG" else bar.close - tgt_dist
+            if self.entry_off_r > 0:
+                off = self.entry_off_r * stop_dist
+                entry_limit = (bar.close - off if direction == "LONG"
+                               else bar.close + off)
+                window_ms = self.entry_window_bars * tf_seconds(bar.timeframe) * 1000
+                entry_deadline = bar.close_ts + window_ms
         return [Signal(bar.symbol, bar.timeframe, direction,
                        strong=score >= self.strong_threshold, score=score,
                        price=bar.close, stop=stop, target=target,
-                       ts=bar.close_ts, hits=keep)]
+                       ts=bar.close_ts, hits=keep,
+                       entry_limit=entry_limit, entry_deadline=entry_deadline)]

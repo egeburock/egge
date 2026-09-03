@@ -3,7 +3,7 @@ scan_all_symbols = true
 dry_run = true
 
 [timeframes]
-enabled = ["5s", "15s", "1m"]
+enabled = ["1m"]
 
 [timeframes.cooldown_s]
 "3s" = 15
@@ -29,8 +29,10 @@ price_jump_pct = 2.0
 funding_crowded = 0.0005
 funding_extreme_neg = -0.0003
 min_quote_volume_usd = 50000.0
-stop_atr_mult = 2.0
-target_atr_mult = 2.0
+stop_atr_mult = 3.0
+target_atr_mult = 6.0
+entry_off_r = 0.5
+entry_window_bars = 8
 use_supertrend = true
 supertrend_len = 20
 supertrend_mult = 2.0

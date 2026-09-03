@@ -47,7 +47,7 @@ async def main():
                 if not spans:
                     continue
                 start_ms = int(min(s.min() for s in spans))
-                end_ms = int(max(s.max() for s in spans)) + opt.TFS["3m"]
+                end_ms = int(max(s.max() for s in spans)) + max(opt.TFS.values())
                 htfs[sym] = await opt.fetch_htf(rest, sym, htf_tf, start_ms, end_ms)
                 await asyncio.sleep(0.1)
         span = ""

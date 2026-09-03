@@ -2,6 +2,7 @@
 bölerek out-of-sample performansı ölçer. Overfitting riskini azaltır.
 """
 import asyncio
+import os
 import sys
 import numpy as np
 import pandas as pd
@@ -18,7 +19,13 @@ import aiohttp
 from src.config import load_config
 from src.klines import BinanceRest
 
-BE_R_MULTS = [0.0, 0.5, 1.0]  # breakeven tetiği (R cinsinden); 0 = kapalı
+BE_R_MULTS = [0.0]  # OOS testinde BE tetiği fayda sağlamadı; kapalı
+STALE_BARS = [0]    # OOS testinde stale kesici zarar etti; kapalı
+ENTRY_OFF_R = [0.0, 0.3, 0.5]  # sinyal kapanışından limit geri çekilme (R cinsinden)
+
+tf_filter = os.environ.get("WF_TF")
+if tf_filter:
+    opt.TFS = {k: v for k, v in opt.TFS.items() if k == tf_filter}
 
 
 async def main():
@@ -43,7 +50,7 @@ async def main():
                 if not spans:
                     continue
                 start_ms = int(min(s.min() for s in spans))
-                end_ms = int(max(s.max() for s in spans)) + opt.TFS["3m"]
+                end_ms = int(max(s.max() for s in spans)) + max(opt.TFS.values())
                 htfs[sym] = await opt.fetch_htf(rest, sym, htf_tf, start_ms, end_ms)
                 await asyncio.sleep(0.1)
 
@@ -73,7 +80,7 @@ async def main():
             train_htf = htf_full[:train_end] if htf_full is not None else None
             test_htf = htf_full[train_end:] if htf_full is not None else None
 
-            # Train'de en iyi (thr, stop, target, be_r) kombinasyonunu bul
+            # Train'de en iyi (thr, stop, target, stale) kombinasyonunu bul
             best_pnl = -1e9
             best_cfg = None
             chosen = []
@@ -86,20 +93,24 @@ async def main():
                     by_series.setdefault((sym, tf), []).append(s)
                 for stop in opt.STOP_MULTS:
                     for target in opt.TARGET_MULTS:
-                        for be_r in BE_R_MULTS:
-                            res = []
-                            for (sy, tf2), g in by_series.items():
-                                dff = data[(sy, tf2)][0].iloc[:train_end]
-                                res += opt.evaluate(g, dff, tf2, stop, target, be_r)["details"]
-                            if res:
-                                avg_pnl = np.mean([x["pnl"] for x in res])
-                                if avg_pnl > best_pnl:
-                                    best_pnl = avg_pnl
-                                    best_cfg = (th, stop, target, be_r)
+                        for stale in STALE_BARS:
+                            for off in ENTRY_OFF_R:
+                                res = []
+                                for (sy, tf2), g in by_series.items():
+                                    dff = data[(sy, tf2)][0].iloc[:train_end]
+                                    res += (opt.evaluate(g, dff, tf2, stop, target,
+                                                         stale_bars=stale,
+                                                         entry_off_r=off).get("details")
+                                            or [])
+                                if res:
+                                    avg_pnl = np.mean([x["pnl"] for x in res])
+                                    if avg_pnl > best_pnl:
+                                        best_pnl = avg_pnl
+                                        best_cfg = (th, stop, target, stale, off)
 
             if best_cfg is None:
                 continue
-            (thr_tr, stop_tr, target_tr, be_tr) = best_cfg
+            (thr_tr, stop_tr, target_tr, stale_tr, off_tr) = best_cfg
             chosen.append(best_cfg)
 
             # Test'te en iyi cfg ile simüle et
@@ -111,7 +122,9 @@ async def main():
                 by_series.setdefault((sym, tf), []).append(s)
             for (sy, tf2), g in by_series.items():
                 dff = data[(sy, tf2)][0].iloc[train_end:]
-                res = opt.evaluate(g, dff, tf2, stop_tr, target_tr, be_tr)["details"]
+                res = (opt.evaluate(g, dff, tf2, stop_tr, target_tr,
+                                    stale_bars=stale_tr,
+                                    entry_off_r=off_tr).get("details") or [])
                 for x in res:
                     x["fold"], x["sym"], x["tf"] = fold, sy, tf2
                     fold_results.append(x)
@@ -124,8 +137,8 @@ async def main():
         avg_pnl = np.mean([x["pnl"] for x in fold_results])
         avg_r = np.mean([x["r"] for x in fold_results])
         cfg_dist = {}
-        for th, sm, tm, be in chosen:
-            key = f"L{th[0]:g}/S{th[1]:g} stop{sm:g} tgt{tm:g} BE{be:g}"
+        for th, sm, tm, st_, off in chosen:
+            key = f"L{th[0]:g}/S{th[1]:g} stop{sm:g} tgt{tm:g} stale{st_:g} off{off:g}"
             cfg_dist[key] = cfg_dist.get(key, 0) + 1
         cfg_line = ", ".join(f"{k} x{v}" for k, v in
                              sorted(cfg_dist.items(), key=lambda kv: -kv[1])[:3])

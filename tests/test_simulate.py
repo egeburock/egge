@@ -1,6 +1,6 @@
 import pandas as pd
 
-from scripts.optimize_rr import simulate
+from scripts.optimize_rr import MARKET_RT_COST_PCT, simulate
 
 
 def ohlc(rows):
@@ -20,7 +20,7 @@ def test_breakeven_exit_saves_loss():
     # stop 2 (98), hedef 4 (104), be_r=0.5 -> tetik 101, bar1'de armed
     result, pnl = simulate(df, 0, "LONG", 100.0, 2.0, 4.0, horizon=2, be_r=0.5)
     assert result == "BE"
-    assert abs(pnl + 0.08) < 1e-9  # gross 0, sadece maliyet
+    assert abs(pnl + MARKET_RT_COST_PCT * 100) < 1e-9  # gross 0, sadece maliyet
 
 
 def test_no_breakeven_rides_to_loss():

@@ -14,6 +14,8 @@ def format_signal(s: Signal) -> str:
              "Tetikleyen kurallar:"]
     lines += [f"• {h.detail}" for h in s.hits]
     lines.append(f"Skor: {s.score}")
+    if s.entry_limit:
+        lines.append(f"Limit giriş: {s.entry_limit:.6g} (dolmazsa iptal)")
     if s.stop:
         lines.append(f"Stop önerisi: {s.stop:.6g} (ATR bazlı)")
     if s.target:

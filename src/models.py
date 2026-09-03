@@ -33,3 +33,5 @@ class Signal:
     target: float | None
     ts: int               # unix ms
     hits: list[RuleHit] = field(default_factory=list)
+    entry_limit: float | None = None   # dolunca geçerli olan limit giriş
+    entry_deadline: int | None = None  # dolmazsa iptal (unix ms)

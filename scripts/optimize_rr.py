@@ -28,7 +28,7 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
 TFS = {"1m": 60_000, "3m": 180_000}
 BARS = 3000
 WARMUP = 80
-HORIZON = {"1m": 120, "3m": 60}
+HORIZON = {"1m": 45, "3m": 45}  # canlı tracker horizon_minutes=30 ile aynı
 COOLDOWN_BARS = 3
 MIN_SIGNALS = 10
 
@@ -41,7 +41,8 @@ TARGET_MULTS = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0]
 TAKER_FEE = 0.0004   # 0.04%
 MAKER_FEE = 0.0002   # 0.02%
 SLIPPAGE_BPS = 1     # 1 bps = 0.01% per fill
-ROUND_TRIP_COST_PCT = TAKER_FEE + MAKER_FEE + 2 * SLIPPAGE_BPS / 10000  # ~0.0008 = 0.08%
+MARKET_RT_COST_PCT = TAKER_FEE + MAKER_FEE + 2 * SLIPPAGE_BPS / 10000  # ~0.08%
+LIMIT_RT_COST_PCT = MAKER_FEE + MAKER_FEE + SLIPPAGE_BPS / 10000       # ~0.05% (limit giriş: slipaj yok)
 
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / ".data_cache"
@@ -312,10 +313,27 @@ def walk(df: pd.DataFrame, pre: dict, c: dict,
 
 def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
              stop_dist: float, tgt_dist: float, horizon: int,
-             be_r: float = 0.0) -> tuple[str, float]:
-    """be_r > 0 ise fiyat +be_r*R'ye ulaştığında stop girişe çekilir (breakeven)."""
+             be_r: float = 0.0, stale_bars: int = 0,
+             entry_off_r: float = 0.0, entry_window: int = 8) -> tuple[str, float]:
+    """entry_off_r > 0: sinyal kapanışından entry_off_r*R geri çekilmede limit
+    giriş; entry_window bar içinde dolmazsa fırsat kaçar (MISSED)."""
     hi, lo, cl = df["high"].to_numpy(), df["low"].to_numpy(), df["close"].to_numpy()
     sign = 1.0 if direction == "LONG" else -1.0
+    cost = LIMIT_RT_COST_PCT if entry_off_r > 0 else MARKET_RT_COST_PCT
+
+    if entry_off_r > 0:
+        lim = price - sign * (entry_off_r * stop_dist)
+        filled_at = -1
+        for j in range(i + 1, min(i + 1 + entry_window, len(df))):
+            touched = lo[j] <= lim if direction == "LONG" else hi[j] >= lim
+            if touched:
+                filled_at = j
+                break
+        if filled_at < 0:
+            return "MISSED", 0.0
+        price = lim
+        i = filled_at
+
     stop = price - sign * stop_dist
     target = price + sign * tgt_dist
     be_trigger = price + sign * (be_r * stop_dist) if be_r > 0 else None
@@ -327,26 +345,34 @@ def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
         hit_stop = lo[j] <= eff_stop if direction == "LONG" else hi[j] >= eff_stop
         if hit_stop:
             if armed:
-                return "BE", -ROUND_TRIP_COST_PCT * 100
+                return "BE", -cost * 100
             gross = -stop_dist / price * 100
-            return "LOSS", gross - ROUND_TRIP_COST_PCT * 100
+            return "LOSS", gross - cost * 100
         hit_target = hi[j] >= target if direction == "LONG" else lo[j] <= target
         if hit_target:
             gross = tgt_dist / price * 100
-            return "WIN", gross - ROUND_TRIP_COST_PCT * 100
+            return "WIN", gross - cost * 100
+        if stale_bars > 0 and j - i >= stale_bars:
+            unreal = sign * (cl[j] - price) / price * 100
+            if unreal <= 0:
+                return "STALE", unreal - cost * 100
     end = cl[min(i + horizon, len(df) - 1)]
     gross = sign * (end - price) / price * 100
-    return ("WIN" if gross > 0 else "LOSS"), gross - ROUND_TRIP_COST_PCT * 100
+    return ("WIN" if gross > 0 else "LOSS"), gross - cost * 100
 
 
 def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
-             stop_mult: float, target_mult: float, be_r: float = 0.0) -> dict:
+             stop_mult: float, target_mult: float, be_r: float = 0.0,
+             stale_bars: int = 0, entry_off_r: float = 0.0) -> dict:
     horizon = HORIZON[tf]
     results = []
     for s in sigs:
         stop_dist, tgt_dist = stop_mult * s["atr"], target_mult * s["atr"]
         result, pnl = simulate(df, s["i"], s["dir"], s["price"],
-                               stop_dist, tgt_dist, horizon, be_r)
+                               stop_dist, tgt_dist, horizon, be_r, stale_bars,
+                               entry_off_r)
+        if result == "MISSED":
+            continue
         results.append({**s, "result": result, "pnl": pnl,
                         "r": pnl / (stop_dist / s["price"] * 100)})
     if not results:
@@ -378,7 +404,7 @@ async def main():
                 if not spans:
                     continue
                 start_ms = int(min(s.min() for s in spans))
-                end_ms = int(max(s.max() for s in spans)) + TFS["3m"]
+                end_ms = int(max(s.max() for s in spans)) + max(TFS.values())
                 df_htf = await fetch_htf(rest, sym, htf_tf, start_ms, end_ms)
                 htfs[sym] = df_htf
                 await asyncio.sleep(0.1)

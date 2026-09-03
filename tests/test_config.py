@@ -6,8 +6,9 @@ from src.config import load_config, tf_seconds
 def test_load_real_config():
     cfg = load_config(Path("config.toml"))
     assert cfg["agent"]["dry_run"] is True
-    assert "5s" in cfg["timeframes"]["enabled"]
-    assert cfg["timeframes"]["cooldown_s"]["5s"] == 30
+    assert cfg["timeframes"]["enabled"] == ["1m"]
+    assert cfg["timeframes"]["cooldown_s"]["1m"] == 180
+    assert cfg["signals"]["entry_off_r"] == 0.5
 
 
 def test_tf_seconds():

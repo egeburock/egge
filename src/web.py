@@ -43,8 +43,8 @@ td,th{padding:6px 8px;border-bottom:1px solid #21262d;text-align:left}
 <table><thead><tr><th>Saat</th><th>Sembol</th><th>Yön</th><th>Dilim</th>
 <th>Skor</th><th>Sonuç</th><th>R</th><th>Kurallar</th></tr></thead><tbody id="rows"></tbody></table>
 <script>
-const SONUC = {'OPEN':['AÇIK','b-open'],'STOPPED':['STOP','b-stop'],
-  'TARGET':['HEDEF','b-target'],'EXPIRED':['SÜRE','b-expired']};
+const SONUC = {'OPEN':['AÇIK','b-open'],'PENDING':['EMİR','b-open'],'STOPPED':['STOP','b-stop'],
+  'TARGET':['HEDEF','b-target'],'EXPIRED':['SÜRE','b-expired'],'MISSED':['DOLMADI','b-expired']};
 function badge(st){const [t,c] = SONUC[st] || [st,'b-expired'];
   return `<span class="badge ${c}">${t}</span>`;}
 function statsLine(dir, m){
