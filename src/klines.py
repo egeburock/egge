@@ -8,6 +8,10 @@ log = logging.getLogger(__name__)
 BASE = "https://fapi.binance.com"
 
 
+class BinanceBanError(RuntimeError):
+    """418: Binance IP banı — beklemek gerekir."""
+
+
 def parse_klines(raw: list, symbol: str, interval: str) -> pd.DataFrame:
     rows = [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]),
              float(k[7])] for k in raw]
@@ -31,6 +35,9 @@ class BinanceRest:
                 if r.status == 429:
                     await asyncio.sleep(2 ** i)
                     continue
+                if r.status == 418:
+                    raise BinanceBanError(
+                        "Binance IP banı (418) — tüm botları durdurup bekleyin")
                 r.raise_for_status()
                 return await r.json()
             finally:

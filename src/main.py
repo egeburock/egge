@@ -11,7 +11,7 @@ from src.bars import bars_to_df
 from src.config import load_config, tf_seconds
 from src.db import Database
 from src.engine import SignalEngine, direction_of
-from src.klines import BinanceRest
+from src.klines import BinanceBanError, BinanceRest
 from src.models import Bar
 from src.notify import Notifier
 from src import rules
@@ -64,10 +64,20 @@ class Agent:
             return [s for s in symbols if s in self.cfg["aggressive"]["symbols"]]
         return symbols
 
+    async def _load_symbols(self):
+        """exchangeInfo + IP banı durumunda bekle-kusuş (60 sn aralıkla 1 saat)."""
+        for attempt in range(60):
+            try:
+                return self._apply_symbol_filter(await self.rest.exchange_info())
+            except BinanceBanError as e:
+                log.warning("%s — 60 sn sonra tekrar (%d/60)", e, attempt + 1)
+                await asyncio.sleep(60)
+        raise RuntimeError("Binance banı 1 saat içinde kalkmadı — çıkılıyor")
+
     async def start(self):
         async with aiohttp.ClientSession() as session:
             self.rest.session = session
-            self.symbols = self._apply_symbol_filter(await self.rest.exchange_info())
+            self.symbols = await self._load_symbols()
             log.info("Taranacak sembol: %d", len(self.symbols))
             sec_tfs = [t for t in self.cfg["timeframes"]["enabled"] if t.endswith("s")]
             feed = WsFeed(self.symbols, sec_tfs,
@@ -125,6 +135,8 @@ class Agent:
             return None
         try:
             return await self.rest.klines(symbol, tf, limit=200)
+        except BinanceBanError:
+            raise
         except Exception as e:
             log.warning("kline hatası %s %s: %s", symbol, tf, e)
             return None
@@ -185,8 +197,13 @@ class Agent:
                 await self.dispatch(sig)
 
         while True:
-            await asyncio.gather(*(scan(sym, tf) for tf in minute_tfs
-                                   for sym in self.symbols))
+            try:
+                await asyncio.gather(*(scan(sym, tf) for tf in minute_tfs
+                                       for sym in self.symbols))
+            except BinanceBanError:
+                log.warning("IP ban (418) — 60 sn bekleniyor")
+                await asyncio.sleep(60)
+                continue
             await asyncio.sleep(60)
 
     async def funding_poller(self):

@@ -21,6 +21,7 @@ import uvicorn
 
 from src.config import load_config, tf_seconds
 from src.db import Database
+from src.klines import BinanceBanError, BinanceRest
 from src.main import Agent
 from src.paper_costs import MAKER_FEE, SLIPPAGE_BPS, TAKER_FEE
 from src.web import create_app
@@ -87,9 +88,13 @@ class PaperBroker:
         while True:
             try:
                 await self.step()
+                await asyncio.sleep(POLL_S)
+            except BinanceBanError as e:
+                log.warning("%s — 60 sn bekleniyor", e)
+                await asyncio.sleep(60)
             except Exception as e:
                 log.warning("paper step hatası: %s", e)
-            await asyncio.sleep(POLL_S)
+                await asyncio.sleep(POLL_S)
 
     async def step(self):
         prices = await self.rest.all_prices()
@@ -187,7 +192,7 @@ class PaperAgent(Agent):
     async def start(self):
         async with aiohttp.ClientSession() as session:
             self.rest.session = session
-            self.symbols = self._apply_symbol_filter(await self.rest.exchange_info())
+            self.symbols = await self._load_symbols()
             log.info("[PAPER] sembol: %d | sermaye $%.2f | risk/işlem %.1f%%",
                      len(self.symbols), self.broker.equity,
                      self.broker.risk_pct * 100)
