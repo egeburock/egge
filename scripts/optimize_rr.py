@@ -37,12 +37,8 @@ THRESHOLDS = [(6.0, 4.0), (6.0, 5.0), (6.0, 6.0), (7.0, 5.0), (7.0, 6.0),
 STOP_MULTS = [1.0, 1.5, 2.0, 2.5, 3.0]
 TARGET_MULTS = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0]
 
-# İşlem maliyetleri (Binance USDT-M Futures varsayılan)
-TAKER_FEE = 0.0004   # 0.04%
-MAKER_FEE = 0.0002   # 0.02%
-SLIPPAGE_BPS = 1     # 1 bps = 0.01% per fill
-MARKET_RT_COST_PCT = TAKER_FEE + MAKER_FEE + 2 * SLIPPAGE_BPS / 10000  # ~0.08%
-LIMIT_RT_COST_PCT = MAKER_FEE + MAKER_FEE + SLIPPAGE_BPS / 10000       # ~0.05% (limit giriş: slipaj yok)
+from src.paper_costs import (LIMIT_RT_COST_PCT, MAKER_FEE, MARKET_RT_COST_PCT,
+                             SLIPPAGE_BPS, TAKER_FEE)
 
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / ".data_cache"

@@ -85,6 +85,23 @@ python scripts/walk_forward.py  # out-of-sample validasyon (train/test fold'lar�
 - In-sample sonuçlara güvenmeyin: `walk_forward.py` out-of-sample koşusu
   olmadan hiçbir ayar değişikliğini kabul etmeyin.
 
+## Paper-Trading Botu ($50 canlı test)
+
+```bash
+python -m src.paper
+```
+
+- Sinyal hattı canlı ajanla birebir aynı (3m, HTF teyidi, 0.5R limit giriş).
+- `$50` sanal sermaye; gerçek emir GÖNDERİLMEZ (API anahtarı gerekmez).
+- Muhasebe gerçekçi: maker/taker fee, slipaj, 8 saatlik funding ödemeleri,
+  pozisyon boyutlama (riske %2 sermaye/işlem, işlem başına 1.5x,
+  portföy 3x sermaye sınırı, en fazla 5 eşzamanlı pozisyon).
+- Dashboard'da "Paper Hesap" paneli: sermaye, açık pozisyonlar, işlem geçmişi.
+- Durum `signals.db`'de kalıcıdır (yeniden başlatmada sermaye korunur).
+
+> Not: Bu araç kâr garantisi değil, ölçüm aracıdır. Stratejinin gerçek net
+> performansı fee/funding/slippage dahil burada görülür.
+
 ## Uyarı
 
 Bu araç yatırım tavsiyesi değildir. Sinyaller eğitim amaçlı kural setlerinin

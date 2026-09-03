@@ -2,12 +2,16 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 
-def create_app(db, status_provider) -> FastAPI:
+def create_app(db, status_provider, paper_provider=None) -> FastAPI:
     app = FastAPI()
 
     @app.get("/api/status")
     def status():
         return status_provider()
+
+    @app.get("/api/paper")
+    def paper():
+        return paper_provider() if paper_provider else {"enabled": False}
 
     @app.get("/api/signals")
     def signals(limit: int = 100, symbol: str | None = None):
@@ -39,6 +43,7 @@ td,th{padding:6px 8px;border-bottom:1px solid #21262d;text-align:left}
 <h1>Binance Futures Sinyal Ajanı</h1>
 <div id="subtitle">Sinyal Akışı</div>
 <div id="status">yükleniyor…</div>
+<div id="paper"><div class="h">Paper Hesap</div><div id="paper-body">kapalı</div></div>
 <div id="results"><div class="h">Sinyal Sonuçları</div><div id="results-body">yükleniyor…</div></div>
 <table><thead><tr><th>Saat</th><th>Sembol</th><th>Yön</th><th>Dilim</th>
 <th>Skor</th><th>Sonuç</th><th>R</th><th>Kurallar</th></tr></thead><tbody id="rows"></tbody></table>
@@ -58,12 +63,25 @@ function statsLine(dir, m){
     `${badge('TARGET')} ${t} · ${badge('STOPPED')} ${s} · ${badge('EXPIRED')} ${e} · ${badge('OPEN')} ${o}`+
     ` — ${win}, ort. R: ${avgR}</div>`;}
 async function refresh(){
-  const [s, sig, stats] = await Promise.all([
+  const [s, sig, stats, p] = await Promise.all([
     fetch('/api/status').then(r=>r.json()),
     fetch('/api/signals?limit=100').then(r=>r.json()),
-    fetch('/api/stats').then(r=>r.json())]);
+    fetch('/api/stats').then(r=>r.json()),
+    fetch('/api/paper').then(r=>r.json()).catch(()=>({enabled:false}))]);
   document.getElementById('status').textContent =
     `${s.symbols} sembol | WS: ${s.ws ? 'bağlı' : 'KOPUK'} | sinyaller: ${sig.length}`;
+  const pb = document.getElementById('paper-body');
+  if (p && p.equity !== undefined) {
+    const pnl = p.equity - p.start_equity;
+    const cls = pnl >= 0 ? 'long' : 'short';
+    const rows = (p.trades || []).slice(0, 8).map(t =>
+      `<div class="row">${t.symbol} ${t.direction} ${t.status} ` +
+      `net $${t.net_pnl == null ? '-' : Number(t.net_pnl).toFixed(3)}</div>`).join('');
+    pb.innerHTML = `<div class="row">Sermaye: <b class="${cls}">$${p.equity}</b> ` +
+      `(başlangıç $${p.start_equity}, net $${pnl.toFixed(2)}) | ` +
+      `açık: ${p.open_positions} | emir: ${p.pending_orders}</div>` +
+      (rows || '<div class="row">henüz işlem yok</div>');
+  }
   const byDir = {};
   stats.forEach(x => {(byDir[x.direction] ||= {})[x.status] = x;});
   document.getElementById('results-body').innerHTML = Object.keys(byDir).length

@@ -71,3 +71,11 @@ chat_id = ""
 [web]
 port = 8000
 
+[paper]
+start_equity = 50.0
+risk_pct = 0.02
+per_trade_cap_x = 1.5
+portfolio_cap_x = 3.0
+min_notional = 5.0
+max_positions = 5
+

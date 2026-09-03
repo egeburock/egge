@@ -84,6 +84,11 @@ class Agent:
                      asyncio.create_task(self.serve_dashboard(feed))]
             await asyncio.gather(*tasks)
 
+    async def dispatch(self, sig):
+        """Sinyal akışı: kaydet + bildir. PaperAgent bu metodu override eder."""
+        self.db.save_signal(sig)
+        await self.notifier.send(sig)
+
     async def on_bar_closed(self, bar: Bar):
         if bar.timeframe.endswith("s"):
             df = self._sec_df(bar)
@@ -92,8 +97,7 @@ class Agent:
         if df is None or len(df) < 30:
             return
         for sig in self.evaluate_df(df, bar):
-            self.db.save_signal(sig)
-            await self.notifier.send(sig)
+            await self.dispatch(sig)
 
     def _sec_df(self, bar: Bar):
         hist = self.sec_history.setdefault(
@@ -178,8 +182,7 @@ class Agent:
                       last["open"], last["high"], last["low"], last["close"],
                       last["quote_volume"])
             for sig in self.evaluate_df(df, bar):
-                self.db.save_signal(sig)
-                await self.notifier.send(sig)
+                await self.dispatch(sig)
 
         while True:
             await asyncio.gather(*(scan(sym, tf) for tf in minute_tfs

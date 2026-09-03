@@ -17,6 +17,17 @@ class Database:
             exit_price REAL, closed_ts INTEGER, result_r REAL);
         CREATE TABLE IF NOT EXISTS tg_queue (
             id INTEGER PRIMARY KEY, text TEXT, sent INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY, symbol TEXT, direction TEXT,
+            entry_ts INTEGER, entry_price REAL, notional REAL,
+            stop REAL, target REAL, deadline_ts INTEGER,
+            entry_limit REAL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            exit_ts INTEGER, exit_price REAL,
+            fees REAL DEFAULT 0, funding REAL DEFAULT 0,
+            gross_pnl REAL, net_pnl REAL, equity_after REAL);
+        CREATE TABLE IF NOT EXISTS paper_state (
+            key TEXT PRIMARY KEY, value TEXT);
         """)
         self._migrate_signals()
 
@@ -99,4 +110,71 @@ class Database:
 
     def mark_message_sent(self, msg_id: int):
         self.conn.execute("UPDATE tg_queue SET sent = 1 WHERE id = ?", (msg_id,))
+        self.conn.commit()
+
+    def save_paper_trade(self, symbol: str, direction: str, entry_ts: int,
+                         entry_price: float, notional: float, stop: float,
+                         target: float, deadline_ts: int, entry_limit: float):
+        cur = self.conn.execute(
+            "INSERT INTO paper_trades (symbol, direction, entry_ts, entry_price,"
+            " notional, stop, target, deadline_ts, entry_limit)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (symbol, direction, entry_ts, entry_price, notional, stop, target,
+             deadline_ts, entry_limit))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def paper_orders(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM paper_trades WHERE status = 'PENDING' ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def paper_positions(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM paper_trades WHERE status = 'OPEN' ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def fill_paper_order(self, trade_id: int, entry_price: float):
+        self.conn.execute(
+            "UPDATE paper_trades SET status = 'OPEN', entry_price = ? WHERE id = ?",
+            (entry_price, trade_id))
+        self.conn.commit()
+
+    def add_paper_funding(self, trade_id: int, amount: float):
+        self.conn.execute(
+            "UPDATE paper_trades SET funding = funding + ? WHERE id = ?",
+            (amount, trade_id))
+        self.conn.commit()
+
+    def close_paper_trade(self, trade_id: int, status: str, exit_ts: int,
+                          exit_price: float, fees: float, funding: float,
+                          gross_pnl: float, net_pnl: float, equity_after: float):
+        self.conn.execute(
+            "UPDATE paper_trades SET status = ?, exit_ts = ?, exit_price = ?,"
+            " fees = ?, funding = ?, gross_pnl = ?, net_pnl = ?, equity_after = ?"
+            " WHERE id = ?",
+            (status, exit_ts, exit_price, fees, funding, gross_pnl, net_pnl,
+             equity_after, trade_id))
+        self.conn.commit()
+
+    def paper_history(self, limit: int = 20) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM paper_trades ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def paper_net_total(self) -> float:
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(net_pnl), 0) AS total FROM paper_trades"
+            " WHERE status NOT IN ('PENDING', 'OPEN')").fetchone()
+        return float(row["total"])
+
+    def get_paper_state(self, key: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT value FROM paper_state WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_paper_state(self, key: str, value: str):
+        self.conn.execute(
+            "INSERT INTO paper_state (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
         self.conn.commit()
