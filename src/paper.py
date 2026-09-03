@@ -104,7 +104,7 @@ class PaperBroker:
         for order in self.db.paper_orders():
             price = prices.get(order["symbol"])
             if price is not None:
-                self.check_fill(order, price, now)
+                await self.check_fill(order, price, now)
         for pos in self.db.paper_positions():
             price = prices.get(pos["symbol"])
             if price is None:
@@ -112,11 +112,26 @@ class PaperBroker:
             self.apply_funding(pos, prev_funding, now)
             self.manage_position(pos, price, now)
 
-    def check_fill(self, order: dict, price: float, now: int):
+    async def _recent_range(self, symbol: str) -> tuple[float, float] | None:
+        """Son 1m mumunun low/high'ı (backtest'teki bar-içi dolum paritesi)."""
+        try:
+            raw = await self.rest._json("/fapi/v1/klines",
+                                        {"symbol": symbol, "interval": "1m",
+                                         "limit": 1})
+            return float(raw[0][3]), float(raw[0][2])
+        except Exception:
+            return None
+
+    async def check_fill(self, order: dict, price: float, now: int):
         lim = order["entry_limit"]
         d = order["direction"]
-        filled = price <= lim if d == "LONG" else price >= lim
-        if filled:
+        rng = await self._recent_range(order["symbol"])
+        if rng is not None:
+            low, high = rng
+            touched = low <= lim if d == "LONG" else high >= lim
+        else:
+            touched = price <= lim if d == "LONG" else price >= lim
+        if touched:
             self.db.fill_paper_order(order["id"], lim)
             log.info("[PAPER] doldu #%d %s %s @ %.6g", order["id"],
                      order["symbol"], d, lim)

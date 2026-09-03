@@ -6,10 +6,18 @@ from src.paper_costs import MAKER_FEE, SLIPPAGE_BPS, TAKER_FEE
 
 NOW = 10_000_000_000  # 8h sınırına göre hizalanmış olmayan bir an
 
+CANDLE = [0, "99.0", "100.5", "98.5", "100.0", 0]  # [ts, open, high, low, close, vol]
+
 
 class FakeRest:
+    def __init__(self, candle=None):
+        self.candle = candle if candle is not None else CANDLE
+
     async def all_prices(self):
         return {}
+
+    async def _json(self, path, params, retries=3):
+        return [self.candle]
 
 
 def make_broker(tmp_path, equity=50.0):
@@ -40,7 +48,7 @@ def test_open_sizes_by_risk_and_fills(tmp_path):
     assert len(orders) == 1
     assert abs(orders[0]["notional"] - 1.0 / 0.03) < 0.01
 
-    b.check_fill(orders[0], 99.0, NOW + 1000)  # limite değdi -> doldu
+    asyncio.run(b.check_fill(orders[0], 99.0, NOW + 1000))  # mum low=98.5 limiti değdi
     pos = b.db.paper_positions()[0]
     assert pos["status"] == "OPEN" and pos["entry_price"] == 99.0
 
@@ -49,7 +57,7 @@ def test_target_exit_updates_equity(tmp_path):
     b = make_broker(tmp_path)
     b.on_signal(make_signal())
     order = b.db.paper_orders()[0]
-    b.check_fill(order, 99.0, NOW + 1000)
+    asyncio.run(b.check_fill(order, 99.0, NOW + 1000))
     pos = b.db.paper_positions()[0]
     notional = pos["notional"]
     b.manage_position(pos, 106.0, NOW + 2000)
@@ -65,7 +73,7 @@ def test_stop_exit_charges_taker_and_slippage(tmp_path):
     b = make_broker(tmp_path)
     b.on_signal(make_signal())
     order = b.db.paper_orders()[0]
-    b.check_fill(order, 99.0, NOW + 1000)
+    asyncio.run(b.check_fill(order, 99.0, NOW + 1000))
     pos = b.db.paper_positions()[0]
     b.manage_position(pos, 97.0, NOW + 2000)
     closed = b.db.paper_history(1)[0]
@@ -80,7 +88,9 @@ def test_unfilled_order_expires_missed(tmp_path):
     b = make_broker(tmp_path)
     b.on_signal(make_signal())
     order = b.db.paper_orders()[0]
-    b.check_fill(order, 100.5, order["deadline_ts"] + 1)  # limite hiç değmedi
+    # mum low=98.5 <= 99 -> dolur; dolmaması için candle'ı yüksek tut
+    b.rest.candle = [0, "100.0", "100.6", "99.8", "100.4", 0]
+    asyncio.run(b.check_fill(order, 100.5, order["deadline_ts"] + 1))
     closed = b.db.paper_history(1)[0]
     assert closed["status"] == "MISSED"
     assert closed["net_pnl"] == 0.0 and b.equity == 50.0
@@ -90,7 +100,7 @@ def test_funding_applied_at_boundary(tmp_path):
     b = make_broker(tmp_path)
     b.on_signal(make_signal())
     order = b.db.paper_orders()[0]
-    b.check_fill(order, 99.0, NOW + 1000)
+    asyncio.run(b.check_fill(order, 99.0, NOW + 1000))
     pos = b.db.paper_positions()[0]
     b.funding["BTCUSDT"] = 0.0001  # pozitif rate: long öder
     boundary = (NOW // 28_800_000 + 1) * 28_800_000 + 1000  # bir sonraki 8s sınırı
@@ -103,7 +113,7 @@ def test_funding_applied_at_boundary(tmp_path):
 def test_skip_if_symbol_already_open(tmp_path):
     b = make_broker(tmp_path)
     assert b.on_signal(make_signal()) is not None
-    b.check_fill(b.db.paper_orders()[0], 99.0, NOW + 1000)
+    asyncio.run(b.check_fill(b.db.paper_orders()[0], 99.0, NOW + 1000))
     assert b.on_signal(make_signal()) is None
 
 
