@@ -3,7 +3,7 @@ scan_all_symbols = true
 dry_run = true
 
 [timeframes]
-enabled = ["1m"]
+enabled = ["3m"]
 
 [timeframes.cooldown_s]
 "3s" = 15
@@ -43,6 +43,7 @@ absorption_body_pct = 30.0
 absorption_vol_mult = 1.5
 use_ob_retest = true
 ob_pivot_len = 5
+use_price_jump = false
 use_rsi2_pullback = false
 rsi2_period = 2
 rsi2_oversold = 10.0
@@ -69,3 +70,4 @@ chat_id = ""
 
 [web]
 port = 8000
+

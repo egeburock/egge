@@ -27,6 +27,19 @@ tf_filter = os.environ.get("WF_TF")
 if tf_filter:
     opt.TFS = {k: v for k, v in opt.TFS.items() if k == tf_filter}
 
+# Deneysel: sinyal yönünü ters çevir (fade/contrarian testi)
+INVERT = os.environ.get("WF_INVERT") == "1"
+if INVERT:
+    _orig_walk = opt.walk
+
+    def _inverted_walk(df, pre, c, thr, htf=None):
+        out = _orig_walk(df, pre, c, thr, htf)
+        for s in out:
+            s["dir"] = "SHORT" if s["dir"] == "LONG" else "LONG"
+        return out
+
+    opt.walk = _inverted_walk
+
 
 async def main():
     cfg = load_config(Path("config.toml"))
@@ -133,7 +146,7 @@ async def main():
             print(f"Fold {fold+1}: yeterli sinyal yok")
             continue
 
-        wins = [x for x in fold_results if x["result"] == "WIN"]
+        wins = [x for x in fold_results if x["result"] in ("TARGET", "EXP_WIN")]
         avg_pnl = np.mean([x["pnl"] for x in fold_results])
         avg_r = np.mean([x["r"] for x in fold_results])
         cfg_dist = {}
@@ -149,18 +162,24 @@ async def main():
                          ("SHORT", lambda x: x["dir"] == "SHORT")):
             g = [x for x in fold_results if key(x)]
             if g:
-                w = sum(1 for x in g if x["result"] == "WIN")
+                w = sum(1 for x in g if x["result"] in ("TARGET", "EXP_WIN"))
                 print(f"  {grp}: {len(g)} sinyal | WR {w/len(g):.1%}")
 
         all_fold_results.extend(fold_results)
 
     if all_fold_results:
-        wins = [x for x in all_fold_results if x["result"] == "WIN"]
+        wins = [x for x in all_fold_results if x["result"] in ("TARGET", "EXP_WIN")]
         avg_pnl = np.mean([x["pnl"] for x in all_fold_results])
         avg_r = np.mean([x["r"] for x in all_fold_results])
         print(f"\n=== TOPLAM (tüm fold'lar) ===")
         print(f"  Sinyal: {len(all_fold_results)} | WR: {len(wins)/len(all_fold_results):.1%} | "
               f"PnL: {avg_pnl:+.3f}% | R: {avg_r:+.2f}")
+        by_res: dict[str, list] = {}
+        for x in all_fold_results:
+            by_res.setdefault(x["result"], []).append(x)
+        for res_k, g in sorted(by_res.items(), key=lambda kv: -len(kv[1])):
+            print(f"    {res_k:8s}: {len(g):4d} | ort pnl {np.mean([x['pnl'] for x in g]):+.3f}% "
+                  f"| toplam katkı {sum(x['pnl'] for x in g):+.2f}%")
 
     print("\nNot: walk-forward sonuçları in-sample grid'e kıyasla daha gerçekçidir.")
 

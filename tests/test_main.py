@@ -44,6 +44,7 @@ async def test_on_bar_closed_second_tf_needs_no_rest(agent):
 @pytest.mark.asyncio
 async def test_on_bar_closed_emits_signal_on_spike(agent):
     agent.engine.long_threshold = 4.0
+    agent.cfg["signals"]["use_price_jump"] = True
     base = 100.0
     for i in range(30):
         await agent.on_bar_closed(sec_bar(i * 5000, close=base))

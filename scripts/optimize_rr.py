@@ -26,9 +26,9 @@ from src.klines import BinanceRest, parse_klines
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
            "PEPEUSDT", "WIFUSDT", "ARBUSDT", "OPUSDT", "LINKUSDT", "SUIUSDT"]
 TFS = {"1m": 60_000, "3m": 180_000}
-BARS = 3000
+BARS = 10000
 WARMUP = 80
-HORIZON = {"1m": 45, "3m": 45}  # canlı tracker horizon_minutes=30 ile aynı
+HORIZON = {"1m": 30, "3m": 30}  # canlı tracker horizon_minutes=30 ile aynı
 COOLDOWN_BARS = 3
 MIN_SIGNALS = 10
 
@@ -199,10 +199,11 @@ def precompute(df: pd.DataFrame, c: dict) -> dict:
 
     o = df["open"].to_numpy()
     cl = df["close"].to_numpy()
-    with np.errstate(divide="ignore", invalid="ignore"):
-        chg = (cl - o) / o * 100
-    long[(o > 0) & (chg >= c["price_jump_pct"])] += 2.0
-    short[(o > 0) & (chg <= -c["price_jump_pct"])] += 2.0
+    if c.get("use_price_jump", True):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            chg = (cl - o) / o * 100
+        long[(o > 0) & (chg >= c["price_jump_pct"])] += 2.0
+        short[(o > 0) & (chg <= -c["price_jump_pct"])] += 2.0
 
     if c.get("use_supertrend", True):
         st = supertrend_series(df, c.get("supertrend_len", 20),
@@ -347,18 +348,18 @@ def simulate(df: pd.DataFrame, i: int, direction: str, price: float,
             if armed:
                 return "BE", -cost * 100
             gross = -stop_dist / price * 100
-            return "LOSS", gross - cost * 100
+            return "STOP", gross - cost * 100
         hit_target = hi[j] >= target if direction == "LONG" else lo[j] <= target
         if hit_target:
             gross = tgt_dist / price * 100
-            return "WIN", gross - cost * 100
+            return "TARGET", gross - cost * 100
         if stale_bars > 0 and j - i >= stale_bars:
             unreal = sign * (cl[j] - price) / price * 100
             if unreal <= 0:
                 return "STALE", unreal - cost * 100
     end = cl[min(i + horizon, len(df) - 1)]
-    gross = sign * (end - price) / price * 100
-    return ("WIN" if gross > 0 else "LOSS"), gross - cost * 100
+    gross = sign * (end - price) / price * 100 - cost * 100
+    return ("EXP_WIN" if gross > 0 else "EXP_LOSS"), gross
 
 
 def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
@@ -377,7 +378,7 @@ def evaluate(sigs: list[dict], df: pd.DataFrame, tf: str,
                         "r": pnl / (stop_dist / s["price"] * 100)})
     if not results:
         return {"n": 0}
-    wins = [x for x in results if x["result"] == "WIN"]
+    wins = [x for x in results if x["result"] in ("TARGET", "EXP_WIN")]
     return {"n": len(results), "wins": len(wins),
             "wr": len(wins) / len(results),
             "avg_pnl": float(np.mean([x["pnl"] for x in results])),
@@ -447,7 +448,7 @@ async def main():
                 for (sym, tf), g in by_series.items():
                     df = data[(sym, tf)][0]
                     all_res += evaluate(g, df, tf, sm, tm)["details"]
-                wins = [x for x in all_res if x["result"] == "WIN"]
+                wins = [x for x in all_res if x["result"] in ("TARGET", "EXP_WIN")]
                 rows.append({
                     "thr": thr, "stop": sm, "target": tm, "n": len(all_res),
                     "wr": len(wins) / len(all_res),
@@ -486,14 +487,14 @@ async def main():
                      ("GÜÇLÜ (>=8)", lambda x: x["score"] >= 8.0)):
         g = [x for x in best["details"] if key(x)]
         if g:
-            w = sum(1 for x in g if x["result"] == "WIN")
+            w = sum(1 for x in g if x["result"] in ("TARGET", "EXP_WIN"))
             print(f"  {grp:11s}: {len(g):3d} sinyal | WR {w / len(g):.1%} "
                   f"| ort {np.mean([x['pnl'] for x in g]):+.3f}%")
     by_tf = {}
     for x in best["details"]:
         by_tf.setdefault(x["tf"], []).append(x)
     for tf, g in by_tf.items():
-        w = sum(1 for x in g if x["result"] == "WIN")
+        w = sum(1 for x in g if x["result"] in ("TARGET", "EXP_WIN"))
         print(f"  {tf:11s}: {len(g):3d} sinyal | WR {w / len(g):.1%}")
 
     base = next((r for r in rows if r["thr"] == (6.0, 4.0)), None)
@@ -503,7 +504,7 @@ async def main():
         for x in base["details"]:
             by_sc.setdefault((x["dir"], int(x["score"])), []).append(x)
         for (d, sc), g in sorted(by_sc.items()):
-            w = sum(1 for x in g if x["result"] == "WIN")
+            w = sum(1 for x in g if x["result"] in ("TARGET", "EXP_WIN"))
             print(f"  {d:5s} skor {sc}: {len(g):4d} sinyal | WR {w / len(g):.1%} "
                   f"| ort {np.mean([x['pnl'] for x in g]):+.3f}%")
 

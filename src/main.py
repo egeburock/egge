@@ -132,7 +132,8 @@ class Agent:
         hits += rules.rsi_reversal(df, c["rsi_period"], c["rsi_oversold"], c["rsi_overbought"])
         hits += rules.macd_cross(df)
         hits += rules.volume_spike(df, c["volume_spike_x"], c["volume_avg_bars"])
-        hits += rules.price_jump(df, c["price_jump_pct"])
+        if c.get("use_price_jump", True):
+            hits += rules.price_jump(df, c["price_jump_pct"])
         trend, _ = rules.supertrend(df, c.get("supertrend_len", 20),
                                     c.get("supertrend_mult", 2.0))
         if c.get("use_supertrend", True):

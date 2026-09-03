@@ -26,7 +26,7 @@ def test_breakeven_exit_saves_loss():
 def test_no_breakeven_rides_to_loss():
     df = make_df()
     result, pnl = simulate(df, 0, "LONG", 100.0, 2.0, 4.0, horizon=2, be_r=0.0)
-    assert result == "LOSS"
+    assert result == "EXP_LOSS"
     assert pnl < -0.3
 
 
@@ -37,5 +37,5 @@ def test_breakeven_never_triggers_without_touch():
         (120_000, 100.5, 100.9, 99.6, 99.8, 1000.0),
     ])
     result, pnl = simulate(df, 0, "LONG", 100.0, 2.0, 4.0, horizon=2, be_r=0.5)
-    assert result == "LOSS"
+    assert result == "EXP_LOSS"
     assert -0.3 < pnl < -0.2  # horizon sonunda -0.2% gross + maliyet
