@@ -28,9 +28,9 @@ volume_avg_bars = 20
 price_jump_pct = 2.0
 funding_crowded = 0.0005
 funding_extreme_neg = -0.0003
-min_quote_volume_usd = 50000.0
-stop_atr_mult = 3.0
-target_atr_mult = 6.0
+min_quote_volume_usd = 2000000.0
+stop_atr_mult = 2.0
+target_atr_mult = 2.0
 entry_off_r = 0.5
 entry_window_bars = 8
 use_supertrend = true
@@ -72,7 +72,7 @@ chat_id = ""
 port = 8000
 
 [paper]
-start_equity = 50.0
+start_equity = 25.0
 risk_pct = 0.02
 per_trade_cap_x = 1.5
 portfolio_cap_x = 3.0

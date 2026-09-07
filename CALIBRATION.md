@@ -48,6 +48,32 @@ olarak bu belgeye işle.
 | Pullback kuralları (RSI2, EMA21) | Sinyal 2x, kalite yarıya; OOS negatif | 2026-09-02 |
 | Derin limit offset (0.75-1.0R) | Dolma oranı çöktü, PnL düştü | 2026-09-03 |
 | 1m canlı timeframe | 30g veride ters seçim (target oranı %17.2) | 2026-09-03 |
+| Geniş stop ailesi (stop 4.5-6×ATR) | OOS -0.047%, fold'lar negatif | 2026-09-07 |
+| Drift hasadı (stop 10×, hedef yok) | Tüm semboller kırmızı, güçlü negatif | 2026-09-07 |
+| stop3/tgt6 geometrisi (LIVE) | 158 canlı işlemde target-oranı %5.9, stop kütlesi -21.2 | 2026-09-07 |
+
+## Forward test sonuçları (gerçek $50 döngüsü, 3-7 Eylül, 4 gün)
+
+- 158 dolu işlem + 153 MISSED; net **-$3.37** (sermaye $50 → $46.50)
+- EXPIRED +%0.106 ort (107 işlem) — **entry drift pozitif ve gerçek**
+- STOP -%0.442 ort (48 işlem) — geometri kanaması
+- Fee toplamı $6.45 = sermayenin %12.9'u — **yüksek frekansta fee yapısal engel**
+- Target-oranı %5.9 (başabaş %33.3) — 6×ATR hedef 30 dk'da vurulmuyor
+- Canlı evren mikro-cap ağırlıklıydı → slipaj modeli gerçek spread'in altında
+- Arşiv: paperbot/signals_archive_50USD.db
+
+## Yeni döngü (7 Eylül): $25 sermaye
+
+- start_equity 25, stop 2×ATR / hedef 2×ATR (kanıtlı en az kötü geometri)
+- min_quote_volume_usd 50k → 2M: mikro-caplar (spread riski) evren dışı
+- Altyapı: tek-instance mutex (8019), süreç supervisor'u, PowerShell watchdog
+
+## Sonraki araştırma yönleri (sıradaki döngü adayı)
+
+1. **Funding-carry / term structure**: pozitif funding ödeyen-kazanan tarzı
+   market-nötr pozisyonlar; /fapi/v1/fundingRate geçmişi ile backtest
+2. **Düşük frekans (15m-1h)**: fee/edge oranını 5-10× iyileştirir
+3. **OI term structure**: openInterestHist ile pozisyonlanma akışı sinyali
 
 ## Kabul edilen değişiklikler
 

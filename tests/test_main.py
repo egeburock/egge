@@ -44,6 +44,7 @@ async def test_on_bar_closed_second_tf_needs_no_rest(agent):
 @pytest.mark.asyncio
 async def test_on_bar_closed_emits_signal_on_spike(agent):
     agent.engine.long_threshold = 4.0
+    agent.engine.min_quote_volume = 0.0
     agent.cfg["signals"]["use_price_jump"] = True
     base = 100.0
     for i in range(30):
@@ -80,6 +81,7 @@ def test_evaluate_df_htf_filter(agent):
     df = pd.DataFrame({"open": [100.0], "high": [105.0], "low": [99.0],
                        "close": [103.0], "quote_volume": [90000.0]})
     hits = [RuleHit("ema_cross", "LONG: x", 3.0), RuleHit("volume_spike", "4x", 2.0)]
+    agent.engine.min_quote_volume = 0.0
     agent.collect_hits = lambda d, s: list(hits)
     agent.engine.long_threshold = 4.0
     agent.cfg["signals"]["use_htf_filter"] = True
@@ -103,6 +105,7 @@ def test_evaluate_df_min_atr_pct_blocks_flat(agent):
     bar = Bar("BTCUSDT", "1m", 0, 60000, 100, 101, 99, 100.5, 90000.0)
     df = pd.DataFrame({"open": [100.0], "high": [101.0], "low": [99.0],
                        "close": [100.5], "quote_volume": [90000.0]})
+    agent.engine.min_quote_volume = 0.0
     agent.collect_hits = lambda d, s: [RuleHit("ema_cross", "LONG: x", 5.0)]
     agent.engine.long_threshold = 5.0
     agent.cfg["signals"]["min_atr_pct"] = 10.0
