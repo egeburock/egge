@@ -75,6 +75,30 @@ olarak bu belgeye işle.
 2. **Düşük frekans (15m-1h)**: fee/edge oranını 5-10× iyileştirir
 3. **OI term structure**: openInterestHist ile pozisyonlanma akışı sinyali
 
+## Kaynak taraması (2026-09-07)
+
+**Zhu & Cai (2026), "AI in Equity and Crypto Markets", arXiv:2609.04917**
+(32 sayfa literatür taraması, kesim 31 Ağustos 2026) — projemizin
+ampirik bulgularıyla bağımsız örtüşme:
+
+- **C2**: Maliyet-farkındasız optimizasyon net cephe üretmez (Jensen et al.
+  2026; Novy-Marx & Velikov 2016 turnover-kost erosyonu) ↔ bizim fee
+  sürüklenmesi bulgusu (%12.9/4 gün)
+- **C4**: Kamu kanıtı kalıcı, rejimler-arası, maliyet-ayarlı net alpha'yı
+  kurmaya yetersiz — "yetersiz" = "imkansız" değil
+- **C5**: Temporal contamination birinci sınıf tehdit; look-ahead düzeltmesi
+  raporlanan ML alpha'sını silebilir ↔ bizim walk-forward disiplini
+- **C8/C9**: Crypto tek test yatağı değil; perp/spot/on-chain ayrıştırılmalı;
+  mikro-cap'ta wash-trading/uygulama riski ↔ 2M hacim filtresi kararı
+- **C11**: Kanıtlanmış reçete değil araştırma programı: veri-hedef-portföy-
+  uygulama-uyum-yönetişim birleşik programı ↔ CALIBRATION.md çerçevesi
+
+**Stratejik sonuç**: Mevcut kural ailesi yüksek frekansta maliyet sonrası
+robust edge taşımıyor (bu taramayla uyumlu). Bir sonraki döngü: (a) funding
+term-structure carry (düşük frekans, market-nötr), (b) 15m-1h momentum —
+her ikisi de fee/edge oranını yapısal iyileştirir. Kâr garantisi yoktur;
+adil yoklama süreci işletilir.
+
 ## Kabul edilen değişiklikler
 
 | Değişiklik | Etki | Tarih |
