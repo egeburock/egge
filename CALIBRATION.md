@@ -55,6 +55,8 @@ olarak bu belgeye işle.
 | Funding-carry (momentum-hizalı) | Yine negatif; tek pozitif hücre 2 örneklem (gürültü) | 2026-09-07 |
 | 15m timeframe | -%0.047 (3m ile aynı; frekans indirimi edge kurtarmadı) | 2026-09-07 |
 | 1h timeframe | Sinyalsiz — kural seti 1h ölçeğinde ateşlenmiyor | 2026-09-07 |
+| OI çeyrekleri (süreklilik + tükenme) | Quadrant farkı +%1.1 görünüyordu; drift-pairing sonrası +0.0024% (gürültü) | 2026-09-07 |
+| Funding-carry fiyat bileşeni | Ekstrem funding = fiyat çöküşüyle eşzamanlı; anti-momentum tuzağı | 2026-09-07 |
 
 ### Arama kapanışı (2026-09-07)
 
