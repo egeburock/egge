@@ -51,6 +51,8 @@ olarak bu belgeye işle.
 | Geniş stop ailesi (stop 4.5-6×ATR) | OOS -0.047%, fold'lar negatif | 2026-09-07 |
 | Drift hasadı (stop 10×, hedef yok) | Tüm semboller kırmızı, güçlü negatif | 2026-09-07 |
 | stop3/tgt6 geometrisi (LIVE) | 158 canlı işlemde target-oranı %5.9, stop kütlesi -21.2 | 2026-09-07 |
+| Funding-carry (naif sıralama, N=5/10/20) | -%0.85..-%2.3/gün — carry, fiyat dominant anti-momentum'a yenik | 2026-09-07 |
+| Funding-carry (momentum-hizalı) | Yine negatif; tek pozitif hücre 2 örneklem (gürültü) | 2026-09-07 |
 
 ## Forward test sonuçları (gerçek $50 döngüsü, 3-7 Eylül, 4 gün)
 
