@@ -25,10 +25,10 @@ from src.klines import BinanceRest, parse_klines
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
            "PEPEUSDT", "WIFUSDT", "ARBUSDT", "OPUSDT", "LINKUSDT", "SUIUSDT"]
-TFS = {"1m": 60_000, "3m": 180_000}
+TFS = {"1m": 60_000, "3m": 180_000, "15m": 900_000, "1h": 3_600_000}
 BARS = 10000
 WARMUP = 80
-HORIZON = {"1m": 30, "3m": 30}  # canlı tracker horizon_minutes=30 ile aynı
+HORIZON = {"1m": 30, "3m": 30, "15m": 30, "1h": 30}  # bar cinsinden (30 bar)
 COOLDOWN_BARS = 3
 MIN_SIGNALS = 10
 

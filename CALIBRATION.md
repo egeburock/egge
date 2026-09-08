@@ -53,6 +53,20 @@ olarak bu belgeye işle.
 | stop3/tgt6 geometrisi (LIVE) | 158 canlı işlemde target-oranı %5.9, stop kütlesi -21.2 | 2026-09-07 |
 | Funding-carry (naif sıralama, N=5/10/20) | -%0.85..-%2.3/gün — carry, fiyat dominant anti-momentum'a yenik | 2026-09-07 |
 | Funding-carry (momentum-hizalı) | Yine negatif; tek pozitif hücre 2 örneklem (gürültü) | 2026-09-07 |
+| 15m timeframe | -%0.047 (3m ile aynı; frekans indirimi edge kurtarmadı) | 2026-09-07 |
+| 1h timeframe | Sinyalsiz — kural seti 1h ölçeğinde ateşlenmiyor | 2026-09-07 |
+
+### Arama kapanışı (2026-09-07)
+
+Mevcut kural ailesi içinde sistematik arama tükenmiştir: 1m/3m/15m/1h
+zaman dilimleri, 8 geometri kombinasyonu, 6 çıkış varyantı, 2 kural
+ailesi ilavesi, funding-carry 2 varyant — hepsi OOS (maliyet dahil)
+[-%2.3, +%0.08] bandında. Kanıt (Zhu & Cai 2026 ile uyumlu): bu sinyal
+sınıfı perakende maliyet yapısında yüksek frekansta robust net edge
+taşımıyor. Pozitif beklenti için ya yeni sinyal ailesi (ayrı araştırma
+projesi) ya da yapısal maliyet avantajı gerekir. Paper bot, forward
+veriyi biriktirmeye devam eder — mevcut konfigürasyon en az kötü
+(kanıtlanmış) noktadır.
 
 ## Forward test sonuçları (gerçek $50 döngüsü, 3-7 Eylül, 4 gün)
 
